@@ -16,9 +16,11 @@ except sqlite3.OperationalError:
     pass
 print("안전장치 4개 + 읽기 전용 확인")
 PY
-python3 mcp_test.py      # MCP 서버를 띄워 도구 4개 확인
+python3 mcp_test.py      # MCP 서버를 띄워 도구 5개 확인
 for v in v1 v2 v3 v4 v5 v6; do python3 eval_ai_sql.py $v --regrade | head -1; done
 for v in v1 v3 v4 v6; do python3 eval_ai_sql.py $v --holdout --regrade | head -1; done
 python3 trace.py | tail -1         # 요구사항 추적표
 python3 replay.py --check | tail -1  # 실시간 판정 = SQL 판정 (다르면 실패)
 python3 eval_cross.py | grep '^맞음'   # 여러 신호 검사 (REQ-14~16) 시험
+python3 history.py | grep '^알림'      # 세션별 변화 판정 (기준 세션끼리 비교)
+python3 eval_history.py | grep '맞음' # 변화 판정 시험 (약 3분)

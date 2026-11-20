@@ -13,7 +13,8 @@ from pathlib import Path
 
 import db
 
-QUERIES = ["02_ratio_median.sql", "05_broken_rows.sql", "06_sample_loss.sql", "07_physics_check.sql", "10_cross_signal.sql"]
+QUERIES = ["02_ratio_median.sql", "05_broken_rows.sql", "06_sample_loss.sql", "07_physics_check.sql", "10_cross_signal.sql",
+           "11_loss_structure.sql"]
 
 
 def session_metrics(con: sqlite3.Connection, refresh_views: bool = True, session_ids: list[int] | None = None) -> dict[str, dict]:
@@ -41,7 +42,7 @@ def judge(con: sqlite3.Connection, metrics: dict) -> list[str]:
     return warns
 
 
-def write_report(out_dir: Path, label: str, info: tuple, m: dict, warns: list[str]) -> None:
+def write_report(out_dir: Path, label: str, info: tuple, m: dict, warns: list[str], changes: list[dict] | None = None) -> None:
     file_name, rows, first_ts, last_ts = info
     lines = [
         f"# 세션 보고서: {label}\n",
@@ -51,6 +52,10 @@ def write_report(out_dir: Path, label: str, info: tuple, m: dict, warns: list[st
         "## 경고\n",
         *(f"- ⚠ {w}" for w in warns),
         *([] if warns else ["- 없음"]),
+        "\n## 기준 세션 대비 변화 (history.py)\n",
+        *(f"- {'**' + c['verdict'] + '**' if c['verdict'] not in ('같음', '판정 불가', '기준 부족') else c['verdict']} "
+          f"{c['metric']} = {c['value']} (기준 {c['baseline']}) — {c['detail']}" for c in (changes or [])),
+        *([] if changes else ["- 비교 안 함"]),
         "\n## 품질 지표\n",
         "| 지표 | 값 |", "|--|--|",
         *(f"| {k} | {v} |" for k, v in m.items()),
@@ -87,13 +92,17 @@ def main() -> None:
     info = {r[0]: r[1:] for r in con.execute(
         """SELECT se.label, se.file_name, se.row_count, MIN(s.ts_utc), MAX(s.ts_utc)
            FROM session se JOIN sample s USING (session_id) GROUP BY se.session_id""")}
+    import history
+    hist = history.sessions(con, metrics)
+    base = history.baseline_sessions(hist)
     summary = []
     for label in metrics:
         warns = judge(con, metrics[label])
         summary.append((label, info[label][1], metrics[label].get("누락률_pct"),
                         metrics[label].get("깨진_비율_pct"), metrics[label].get("비율_중앙값"), len(warns)))
         if label in targets:
-            write_report(out_dir, label, info[label], metrics[label], warns)
+            target = next(h for h in hist if h["label"] == label)
+            write_report(out_dir, label, info[label], metrics[label], warns, history.judge(target, base))
             print(f"보고서: reports/{label}.md (경고 {len(warns)}개)")
 
     idx = ["# 전체 세션\n", "`python pipeline.py`가 만든 파일.\n",
