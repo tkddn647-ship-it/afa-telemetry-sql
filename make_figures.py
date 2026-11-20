@@ -67,36 +67,39 @@ def fig_current():
 
 
 def fig_ai_accuracy():
-    def score(tag):
-        p = db.ROOT / "eval" / f"raw_{tag}.json"
-        if not p.exists():
-            return None
-        r = json.loads(p.read_text(encoding="utf-8"))
-        return sum(x["ok"] for x in r), len(r)
+    """버전마다 실행한 모든 결과를 점으로, 최소~최대를 선으로 (AI는 실행마다 답이 달라 한 번 값으로 말하지 않는다. Atil 2024)."""
+    p = db.ROOT / "eval" / "ai_runs.json"            # python tally_ai_runs.py 가 만듦
+    if not p.exists():
+        return
+    runs = json.loads(p.read_text(encoding="utf-8"))
+
+    def scores(base, qset):
+        r = runs.get(base, {"runs": {}, "n": 1})
+        return list(r["runs"].values()), r["n"]
     versions = ["v1", "v2", "v3", "v4", "v5", "v6"]
     names = {"v1": "v1\n표 구조만", "v2": "v2\n+ 분석 규칙", "v3": "v3\n+ 보정 단서", "v4": "v4\n+ 누락률 정의",
              "v5": "v5\n+ 값 검사 표시", "v6": "v6\n+ 묻지 않으면\n안 뺌"}
-    dev = [score(v) for v in versions]
-    hold = [score(f"{v}_holdout") for v in versions]
-    fig, ax = plt.subplots(figsize=(10, 4.6), dpi=200, facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(10, 4.8), dpi=200, facecolor=SURFACE)
     style(ax)
     ax.grid(axis="x", visible=False)
-    w = 0.36
-    for i, (d, h) in enumerate(zip(dev, hold)):
-        for off, val, color in ((-w / 2 - 0.01, d, BLUE), (w / 2 + 0.01, h, ORANGE)):
-            if val is None:
-                ax.text(i + off, 3, "안 잼", ha="center", color=INK2, fontsize=8)
+    for i, v in enumerate(versions):
+        for off, qset, base, color in ((-0.17, "questions", v, BLUE), (0.17, "holdout", f"{v}_holdout", ORANGE)):
+            sc, n = scores(base, qset)
+            if not sc:
+                ax.text(i + off, 4, "안 잼", ha="center", color=INK2, fontsize=8)
                 continue
-            pct = 100 * val[0] / val[1]
-            ax.bar(i + off, pct, width=w, color=color)
-            ax.text(i + off, pct + 2, f"{val[0]}/{val[1]}", ha="center", color=INK, fontsize=9)
+            pct = [100 * x / n for x in sc]
+            ax.plot([i + off, i + off], [min(pct), max(pct)], color=color, lw=2, solid_capstyle="round")
+            ax.scatter([i + off] * len(pct), pct, s=40, color=color, edgecolor=SURFACE, linewidth=1.5, zorder=3)
+            lab = f"{min(sc)}/{n}" if min(sc) == max(sc) else f"{min(sc)}~{max(sc)}/{n}"
+            ax.text(i + off, max(pct) + 4, lab, ha="center", color=INK, fontsize=8.5)
     ax.set_xticks(range(len(versions)), [names[v] for v in versions])
-    ax.set_ylim(0, 120)
+    ax.set_ylim(0, 115)
     ax.set_ylabel("AI가 맞힌 비율 [%]", color=INK2, fontsize=10)
-    ax.set_title("AI가 짠 SQL의 정답률: 분석 규칙을 주기 전과 후", color=INK, fontsize=11, loc="left")
-    fig.text(0.01, 0.01, "지금 정답·채점 규칙으로 모든 버전을 다시 채점. v4~v6 개발용은 3번 실행 중 첫 번째 (3번: v4 16·16·16, v5 16·16·17, v6 16·16·16)",
+    ax.set_title("AI가 짠 SQL의 정답률: 실행마다 점 하나, 선은 최소~최대", color=INK, fontsize=11, loc="left")
+    fig.text(0.01, 0.01, "버전마다 3번 실행, 지금 정답·채점 규칙으로 다시 채점 (python tally_ai_runs.py). 점수가 같으면 점이 겹침. v2·v5 따로 둔 문항은 안 잼",
              color=INK2, fontsize=8)
-    handles = [plt.Rectangle((0, 0), 1, 1, color=BLUE), plt.Rectangle((0, 0), 1, 1, color=ORANGE)]
+    handles = [plt.Line2D([], [], color=BLUE, marker="o", lw=2), plt.Line2D([], [], color=ORANGE, marker="o", lw=2)]
     ax.legend(handles, ["개발용 17문항 (규칙을 고칠 때 본 문항)", "따로 둔 8문항 (규칙을 고칠 때 보지 않은 문항)"],
               frameon=False, fontsize=8, loc="upper left", labelcolor=INK2)
     fig.tight_layout(rect=(0, 0.04, 1, 1))

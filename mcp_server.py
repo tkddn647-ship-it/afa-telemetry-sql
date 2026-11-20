@@ -10,6 +10,7 @@ from mcp.server.mcpserver import MCPServer
 import ask
 import db
 import pipeline
+import profile_cols
 
 mcp = MCPServer("afa-telemetry")
 
@@ -51,6 +52,15 @@ def session_quality(label: str) -> dict:
     if label not in metrics:
         return {"error": f"'{label}' 세션이 없습니다", "sessions": list(metrics)}
     return {"label": label, "metrics": metrics[label], "warnings": pipeline.judge(con, metrics[label])}
+
+
+@mcp.tool()
+def column_profile(label: str) -> dict:
+    """세션 하나의 열마다 요약: 개수, 최소·중앙값·최대, 서로 다른 값 수, 0 비율, 같은 값이 가장 오래 이어진 구간, 한 행 사이 가장 큰 변화 (깨진 행 제외)."""
+    con = db.connect_readonly()
+    if not con.execute("SELECT 1 FROM session WHERE label = ?", (label,)).fetchone():
+        return {"error": f"'{label}' 세션이 없습니다"}
+    return {"label": label, "columns": profile_cols.profile(con, label)}
 
 
 if __name__ == "__main__":

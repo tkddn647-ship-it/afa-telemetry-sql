@@ -1,0 +1,503 @@
+{
+ "truths": {
+  "시험1": {
+   "hidden": [
+    {
+     "kind": "bms_half",
+     "column": "bms_current",
+     "first_row": 14777,
+     "last_row": 15076,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "stuck",
+     "column": "inv_dc_current",
+     "first_row": 8289,
+     "last_row": 8588,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "v_offset",
+     "column": "inv_voltage",
+     "first_row": 9564,
+     "last_row": 9863,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "speed_0",
+     "column": "vehicle_speed_kmh",
+     "first_row": 12693,
+     "last_row": 12992,
+     "value_flagged_rows": 0
+    }
+   ],
+   "natural": {
+    "stuck": 0,
+    "v_offset": 1,
+    "speed_0": 0,
+    "bms_half": 0
+   }
+  },
+  "시험2": {
+   "hidden": [
+    {
+     "kind": "bms_half",
+     "column": "bms_current",
+     "first_row": 21620,
+     "last_row": 21919,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "stuck",
+     "column": "inv_dc_current",
+     "first_row": 30017,
+     "last_row": 30316,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "v_offset",
+     "column": "inv_voltage",
+     "first_row": 19283,
+     "last_row": 19582,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "speed_0",
+     "column": "vehicle_speed_kmh",
+     "first_row": 29074,
+     "last_row": 29373,
+     "value_flagged_rows": 0
+    }
+   ],
+   "natural": {
+    "stuck": 0,
+    "v_offset": 1,
+    "speed_0": 0,
+    "bms_half": 0
+   }
+  },
+  "시험3": {
+   "hidden": [
+    {
+     "kind": "bms_half",
+     "column": "bms_current",
+     "first_row": 15810,
+     "last_row": 16109,
+     "value_flagged_rows": 1
+    },
+    {
+     "kind": "stuck",
+     "column": "inv_dc_current",
+     "first_row": 10017,
+     "last_row": 10316,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "v_offset",
+     "column": "inv_voltage",
+     "first_row": 13557,
+     "last_row": 13856,
+     "value_flagged_rows": 0
+    },
+    {
+     "kind": "speed_0",
+     "column": "vehicle_speed_kmh",
+     "first_row": 6886,
+     "last_row": 7185,
+     "value_flagged_rows": 0
+    }
+   ],
+   "natural": {
+    "stuck": 0,
+    "v_offset": 4,
+    "speed_0": 0,
+    "bms_half": 0
+   }
+  }
+ },
+ "runs": [
+  {
+   "mode": "blind",
+   "label": "시험1",
+   "run": 1,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "(지표 밖) row 1~7971 bms_capacity 비정상 저값",
+    "(지표 밖) bms_capacity 급변이 43.96초 기록 끊김과 겹침"
+   ],
+   "claims": 6,
+   "reproduced": 6,
+   "turns": 29,
+   "seconds": 109,
+   "cost_usd": 0.5609386,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험1",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [],
+   "claims": 9,
+   "reproduced": 9,
+   "turns": 29,
+   "seconds": 107,
+   "cost_usd": 0.5602554000000001,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험1",
+   "run": 3,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "기록 멈춤 2번"
+   ],
+   "claims": 9,
+   "reproduced": 9,
+   "turns": 37,
+   "seconds": 127,
+   "cost_usd": 0.7035453999999999,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험2",
+   "run": 1,
+   "found": {
+    "bms_half": false,
+    "stuck": false,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2번"
+   ],
+   "claims": 6,
+   "reproduced": 6,
+   "turns": 25,
+   "seconds": 105,
+   "cost_usd": 0.5360412000000001,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험2",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2번"
+   ],
+   "claims": 7,
+   "reproduced": 7,
+   "turns": 27,
+   "seconds": 104,
+   "cost_usd": 0.5293388,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험2",
+   "run": 3,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2번"
+   ],
+   "claims": 8,
+   "reproduced": 8,
+   "turns": 36,
+   "seconds": 134,
+   "cost_usd": 0.7139367999999998,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험3",
+   "run": 1,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "주행 중 MCU 재시작 (row 11286)",
+    "재시작 뒤 고전압 꺼진 채 기록만 남은 구간 (row 19210~24034)"
+   ],
+   "claims": 8,
+   "reproduced": 8,
+   "turns": 36,
+   "seconds": 141,
+   "cost_usd": 0.8019326000000001,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험3",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "세션 마지막 4,825행은 인버터 신호가 모두 0",
+    "재시작에 가려진 기록 공백 약 749초"
+   ],
+   "claims": 7,
+   "reproduced": 7,
+   "turns": 32,
+   "seconds": 157,
+   "cost_usd": 0.8239970000000001,
+   "checked_columns": 0
+  },
+  {
+   "mode": "blind",
+   "label": "시험3",
+   "run": 3,
+   "found": {
+    "bms_half": false,
+    "stuck": false,
+    "v_offset": false,
+    "speed_0": false
+   },
+   "other": [
+    "MCU 재시작 뒤 인버터 신호 0 고정 구간 (지표 밖 이상)"
+   ],
+   "claims": 6,
+   "reproduced": 6,
+   "turns": 23,
+   "seconds": 97,
+   "cost_usd": 0.5637652,
+   "checked_columns": 0
+  },
+  {
+   "mode": "v2",
+   "label": "시험1",
+   "run": 1,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "기록 멈춤 2번",
+    "프리차지 미달 상태에서 접촉기 닫힘",
+    "bms_capacity 초반 값 2~3",
+    "인버터 모드 한 행만 1",
+    "횡가속도 한 행 튐"
+   ],
+   "claims": 14,
+   "reproduced": 14,
+   "turns": 43,
+   "seconds": 132,
+   "cost_usd": 1.1124832,
+   "checked_columns": 37
+  },
+  {
+   "mode": "v2",
+   "label": "시험1",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "멈춘 구간 앞쪽의 BMS 잔량·충전한계 값",
+    "주행 중 한 행만 켜진 상태 비트"
+   ],
+   "claims": 10,
+   "reproduced": 9,
+   "turns": 40,
+   "seconds": 157,
+   "cost_usd": 1.0256342,
+   "checked_columns": 37
+  },
+  {
+   "mode": "v2",
+   "label": "시험1",
+   "run": 3,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "BMS 용량 값 비정상",
+    "접촉기가 닫혔는데 인버터 온도가 0",
+    "인버터 모드 비트가 한 행만 켜짐",
+    "횡가속도 한 행 튐",
+    "기록이 멈춘 구간 2번"
+   ],
+   "claims": 11,
+   "reproduced": 11,
+   "turns": 28,
+   "seconds": 116,
+   "cost_usd": 0.7517794,
+   "checked_columns": 38
+  },
+  {
+   "mode": "v2",
+   "label": "시험2",
+   "run": 1,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2번",
+    "프리차지 미달 상태로 접촉기 닫힘, 프리차지 신호 항상 0"
+   ],
+   "claims": 10,
+   "reproduced": 10,
+   "turns": 60,
+   "seconds": 196,
+   "cost_usd": 1.3338421999999999,
+   "checked_columns": 44
+  },
+  {
+   "mode": "v2",
+   "label": "시험2",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2회",
+    "프리차지 덜 된 상태에서 접촉기 닫힘",
+    "서스펜션 fr 단발 +20 튐",
+    "서스펜션 rr 단발 +20 튐"
+   ],
+   "claims": 11,
+   "reproduced": 11,
+   "turns": 65,
+   "seconds": 193,
+   "cost_usd": 1.5345468,
+   "checked_columns": 37
+  },
+  {
+   "mode": "v2",
+   "label": "시험2",
+   "run": 3,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "MCU 재시작 2번",
+    "fr 한 행 +20 튐",
+    "rr 한 행 +20 튐"
+   ],
+   "claims": 10,
+   "reproduced": 10,
+   "turns": 54,
+   "seconds": 152,
+   "cost_usd": 1.0193882,
+   "checked_columns": 38
+  },
+  {
+   "mode": "v2",
+   "label": "시험3",
+   "run": 1,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "기록 멈춤 1번",
+    "인버터 전압 0인 채로 주 접촉기 닫힘"
+   ],
+   "claims": 9,
+   "reproduced": 9,
+   "turns": 48,
+   "seconds": 141,
+   "cost_usd": 0.9773341999999999,
+   "checked_columns": 38
+  },
+  {
+   "mode": "v2",
+   "label": "시험3",
+   "run": 2,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "기록이 멈춘 구간",
+    "rr 한 행 튐(검사 기준 아래)",
+    "rl 한 행 튐(검사 기준 아래)",
+    "시작 구간 인버터 신호가 한 값",
+    "재시작 뒤 인버터 데이터 0 구간"
+   ],
+   "claims": 13,
+   "reproduced": 13,
+   "turns": 35,
+   "seconds": 147,
+   "cost_usd": 0.865442,
+   "checked_columns": 38
+  },
+  {
+   "mode": "v2",
+   "label": "시험3",
+   "run": 3,
+   "found": {
+    "bms_half": true,
+    "stuck": true,
+    "v_offset": true,
+    "speed_0": true
+   },
+   "other": [
+    "시작 1772행 동안 인버터 신호 고정",
+    "IGBT 온도가 6.6 °C로 떨어졌다 돌아옴",
+    "재시작으로만 세진 기록 공백"
+   ],
+   "claims": 11,
+   "reproduced": 11,
+   "turns": 51,
+   "seconds": 199,
+   "cost_usd": 1.3079100000000001,
+   "checked_columns": 38
+  }
+ ]
+}

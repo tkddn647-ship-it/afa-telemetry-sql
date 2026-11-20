@@ -93,7 +93,7 @@ def python_numbers() -> dict:
         close = cl[(mc == 1) & (mc.shift(1) == 0)]
         ratio = close.inv_voltage / close.bms_voltage
         res[(i, "closures")] = len(close)
-        res[(i, "precharge_bad")] = int((ratio < 0.95).sum())
+        res[(i, "precharge_bad")] = int((ratio < 0.90).sum())   # KSAE 제52조 ①
         m = (cl.inv_dc_current > 25) & (cl.bms_current <= 0.5)
         r = cl.row_no[m]
         grp = (r.diff() != 1).cumsum()                     # 행 번호가 1씩 이어지는 덩어리

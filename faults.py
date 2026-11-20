@@ -24,6 +24,7 @@ import math
 import random
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from verify import flags
@@ -143,10 +144,6 @@ def main() -> None:
     print(out, f"결함 행 {len(truth['rows'])}개, 빠뜨린 샘플 {truth['dropped_samples']}개, 재시작 {truth['restarts']}번")
 
 
-if __name__ == "__main__":
-    main()
-
-
 def inject_stuck(df: pd.DataFrame, rng: random.Random, col: str = "inv_dc_current", length: int = 300) -> tuple[pd.DataFrame, dict]:
     """품질 규칙에 없는 이상 하나: 주행 중 한 신호가 length행 동안 같은 값에 멈춤 (센서·통신 고착).
     분석 에이전트가 규칙에 없는 이상도 찾는지 보려고 쓴다. 정답 = 멈춘 행 범위."""
@@ -161,3 +158,57 @@ def inject_stuck(df: pd.DataFrame, rng: random.Random, col: str = "inv_dc_curren
         raise SystemExit("멈춤을 넣을 주행 구간을 못 찾음")
     df.loc[start:start + length - 1, col] = df.at[start, col]
     return df, {"kind": "stuck", "column": col, "first_row": start + 1, "last_row": start + length}
+
+
+def inject_blind(df: pd.DataFrame, rng: random.Random, length: int = 300, gap: int = 600,
+                 kinds: tuple[str, ...] = ("stuck", "v_offset", "speed_0")) -> tuple[pd.DataFrame, list[dict]]:
+    """품질 규칙에 없는 이상 3종을 서로 gap행 이상 떨어뜨려 심는다 (분석 에이전트 blind 시험용, 지시문에 종류를 알려 주지 않음).
+      stuck    : 주행 중 인버터 전류가 length행 동안 한 값에 멈춤
+      v_offset : 접촉기가 닫힌 주행 중 인버터 전압만 25 V 낮아짐 (평소엔 팩 전압과 1~2% 안). 계단이 length행 이어져 값 검사(50 ms 이하)에 안 걸림
+      speed_0  : 모터가 500 rpm 넘게 도는데 차량 속도만 length행 동안 0
+      bms_half : 부하 중 팩 전류만 length행 동안 절반 (2026-11-21 추가. 에이전트 지시문·도구를 고칠 때 보지 않은 종류)
+    정답 = 각 이상의 행 범위 (row_no, 1부터)."""
+    df = df.reset_index(drop=True).copy()
+    n = len(df)
+    def win(m):                                  # i 부터 length행이 모두 참인 시작 위치
+        c = np.concatenate([[0], np.cumsum(m.astype(int))])
+        ok = np.zeros(n, bool)
+        ok[: n - length + 1] = (c[length:] - c[: n - length + 1]) == length
+        return ok
+    drive = (df.vehicle_speed_kmh > 20).to_numpy()
+    cands = {
+        "stuck": win(drive & (df.inv_dc_current > 5).to_numpy()),
+        "v_offset": win((df.motor_main_contactor == 1).to_numpy()
+                        & ((df.inv_voltage - df.bms_voltage).abs() < 0.03 * df.bms_voltage).to_numpy() & drive),
+        "speed_0": win(drive & (df.inv_motor_speed > 500).to_numpy()),
+        "bms_half": win(((df.inv_dc_current > 25) & (df.bms_current > 5)).to_numpy()),
+    }
+    cands = {k: cands[k] for k in kinds}
+    used, out = [], []
+    for kind, ok in sorted(cands.items(), key=lambda kv: kv[1].sum()):   # 넣을 곳이 적은 종류부터
+        idx = [i for i in np.flatnonzero(ok) if all(abs(i - u) >= length + gap for u in used) and 300 < i < n - length - 300]
+        if kind == "stuck":
+            idx = [i for i in idx if df.inv_dc_current[i:i + length].std() > 5]
+        if not idx:
+            raise SystemExit(f"{kind} 을 넣을 구간을 못 찾음")
+        st = int(rng.choice(idx))
+        sl = slice(st, st + length - 1)
+        if kind == "stuck":
+            col = "inv_dc_current"
+            df.loc[sl, col] = df.at[st, col]
+        elif kind == "v_offset":
+            col = "inv_voltage"
+            df.loc[sl, col] = (df.loc[sl, col] - 25).round(1)
+        elif kind == "speed_0":
+            col = "vehicle_speed_kmh"
+            df.loc[sl, col] = 0.0
+        else:
+            col = "bms_current"
+            df.loc[sl, col] = (df.loc[sl, col] * 0.5).round(1)
+        used.append(st)
+        out.append({"kind": kind, "column": col, "first_row": st + 1, "last_row": st + length})
+    return df, out
+
+
+if __name__ == "__main__":
+    main()

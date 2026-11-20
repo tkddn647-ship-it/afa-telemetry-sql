@@ -49,6 +49,8 @@ SCHEMA = {
     },
     "required": ["summary", "key_metrics", "findings"],
 }
+SCHEMA_V2 = {**SCHEMA, "properties": {**SCHEMA["properties"], "checked_columns": {"type": "array", "items": {"type": "string"}}},
+             "required": SCHEMA["required"] + ["checked_columns"]}
 
 TASK = """너는 학생 포뮬러 전기차 주행 로그의 품질 분석가다. 세션 '{label}'을 조사해라.
 1. describe_schema 로 표 구조와 분석 규칙을 먼저 읽어라.
@@ -58,19 +60,35 @@ TASK = """너는 학생 포뮬러 전기차 주행 로그의 품질 분석가다
 4. 결과마다 그 숫자를 다시 계산하는 SELECT 한 문장(sql)과 그 SELECT 결과 첫 행 첫 숫자와 같은 값(value)을 붙여라.
    value 는 반드시 그 sql 을 실행했을 때 나오는 값이어야 한다.
 추측은 쓰지 말고, 도구로 확인한 것만 써라. summary, title, claim 은 한국어로 써라."""
+TASK_HINT = TASK
+
+# blind: 3번에서 이상의 종류(멈춤·모순)를 알려 주지 않는다. 힌트가 있으면 '찾았다'가 지시문 덕인지 알 수 없어서 (2026-11-20)
+TASK_BLIND = TASK.replace(
+    "3. 품질 지표에 이미 있는 것 말고도, 신호가 같은 값에 멈춘 구간이나 신호끼리 서로 모순되는 구간처럼 지표에 안 잡히는 이상이 있는지 직접 찾아라.",
+    "3. 품질 지표에 이미 있는 것 말고도, 지표에 안 잡히는 이상이 있는지 직접 찾아라.")
+assert TASK_BLIND != TASK
+
+# v2 (2026-11-21): blind 시험에서 이상 하나를 찾으면 멈추는 일이 많아, 모든 열을 한 번씩 보게 한다. 이상 종류는 여전히 알려 주지 않는다.
+TASK_V2 = TASK_BLIND.replace(
+    "   찾으면 어느 행부터 어느 행까지인지(row_no) 밝혀라.",
+    "   column_profile 로 모든 열의 요약을 먼저 보고, 열마다 한 번씩 확인해라. 다른 열과 함께 봐야 이상인 것도 있다.\n"
+    "   이상을 하나 찾았다고 멈추지 말고 끝까지 확인해라. 찾으면 어느 행부터 어느 행까지인지(row_no) 밝혀라.\n"
+    "   확인한 열 이름을 checked_columns 에 모두 적어라.")
+assert TASK_V2 != TASK_BLIND
 
 
-def run_agent(label: str, db_path: Path = db.DB, timeout: int = 900) -> dict:
+def run_agent(label: str, db_path: Path = db.DB, timeout: int = 900, task: str = TASK, schema: dict = SCHEMA,
+              tools: str = "") -> dict:
     cfg = {"mcpServers": {"afa": {"command": sys.executable, "args": [str(db.ROOT / "mcp_server.py")],
                                   "env": {"TELEMETRY_DB": str(db_path)}}}}
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump(cfg, fh)
         cfg_path = fh.name
-    cmd = ["claude", "-p", TASK.format(label=label), "--output-format", "json",
+    cmd = ["claude", "-p", task.format(label=label), "--output-format", "json",
            "--mcp-config", cfg_path, "--strict-mcp-config",
-           "--allowedTools", "mcp__afa__list_sessions,mcp__afa__describe_schema,mcp__afa__run_select,mcp__afa__session_quality",
+           "--allowedTools", "mcp__afa__list_sessions,mcp__afa__describe_schema,mcp__afa__run_select,mcp__afa__session_quality" + tools,
            "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Agent",
-           "--json-schema", json.dumps(SCHEMA, ensure_ascii=False)]
+           "--json-schema", json.dumps(schema, ensure_ascii=False)]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     os.unlink(cfg_path)
     meta = json.loads(out.stdout)
@@ -80,6 +98,7 @@ def run_agent(label: str, db_path: Path = db.DB, timeout: int = 900) -> dict:
         rep = json.loads(text[text.find("{"):text.rfind("}") + 1])
     rep["_turns"] = meta.get("num_turns")
     rep["_seconds"] = round(meta.get("duration_ms", 0) / 1000)
+    rep["_cost_usd"] = meta.get("total_cost_usd")
     return rep
 
 
@@ -121,7 +140,8 @@ def write_report(label: str, rep: dict, checked: list[dict], path: Path) -> None
 
 def main() -> None:
     label = sys.argv[1]
-    rep = run_agent(label)
+    # 기본은 v2 (blind 시험 r2: 36/36, 힌트 지시문보다 실행 간 흔들림이 적음). 대신 실행당 시간·비용이 약 1.3~1.7배
+    rep = run_agent(label, task=TASK_V2, schema=SCHEMA_V2, tools=",mcp__afa__column_profile")
     checked = verify(rep)
     out = db.ROOT / "reports" / f"agent_{label}.md"
     write_report(label, rep, checked, out)

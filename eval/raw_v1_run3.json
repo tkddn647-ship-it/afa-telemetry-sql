@@ -1,0 +1,1347 @@
+[
+ {
+  "id": 1,
+  "q": "세션마다 샘플이 몇 개씩 있어?",
+  "ok": true,
+  "why": "",
+  "attempts": 1,
+  "sql": "SELECT s.session_id,\n       s.label,\n       COUNT(m.row_no) AS n_samples\nFROM session AS s\nLEFT JOIN sample AS m\n  ON m.session_id = s.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    17066
+   ],
+   [
+    2,
+    "오후2차",
+    32710
+   ],
+   [
+    3,
+    "오후6차",
+    24286
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    34301
+   ],
+   [
+    5,
+    "오전2차",
+    33204
+   ],
+   [
+    6,
+    "오전_1차",
+    17479
+   ],
+   [
+    7,
+    "오후3차",
+    2258
+   ],
+   [
+    8,
+    "오후4차",
+    9159
+   ],
+   [
+    9,
+    "오후5차",
+    9847
+   ],
+   [
+    10,
+    "오후7차",
+    17717
+   ]
+  ],
+  "gold": [
+   [
+    17066
+   ],
+   [
+    32710
+   ],
+   [
+    24286
+   ],
+   [
+    34301
+   ],
+   [
+    33204
+   ],
+   [
+    17479
+   ],
+   [
+    2258
+   ],
+   [
+    9159
+   ],
+   [
+    9847
+   ],
+   [
+    17717
+   ]
+  ]
+ },
+ {
+  "id": 2,
+  "q": "차량 속도가 60 km/h를 넘은 샘플은 전부 몇 개야?",
+  "ok": true,
+  "why": "깨진 값을 빼고 계산 (인정)",
+  "attempts": 1,
+  "sql": "SELECT COUNT(*) AS n_samples_over_60kmh\nFROM sample_clean\nWHERE vehicle_speed_kmh > 60\n  AND COALESCE(bad_speed, 0) = 0",
+  "got": [
+   [
+    9473
+   ]
+  ],
+  "gold": [
+   [
+    9649
+   ]
+  ]
+ },
+ {
+  "id": 3,
+  "q": "세션별 최고 속도와 평균 팩 전압을 알려 줘.",
+  "ok": true,
+  "why": "깨진 값을 빼고 계산 (인정)",
+  "attempts": 1,
+  "sql": "SELECT\n  s.session_id,\n  s.label,\n  MAX(CASE WHEN c.bad_speed = 0 THEN c.vehicle_speed_kmh END) AS max_speed_kmh,\n  ROUND(AVG(CASE WHEN c.bad_bms = 0 THEN c.bms_voltage END), 2) AS avg_pack_voltage_v\nFROM session AS s\nLEFT JOIN sample_clean AS c\n  ON c.session_id = s.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    93.956,
+    282.01
+   ],
+   [
+    2,
+    "오후2차",
+    69.478,
+    280.03
+   ],
+   [
+    3,
+    "오후6차",
+    90.843,
+    271.61
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    94.956,
+    267.74
+   ],
+   [
+    5,
+    "오전2차",
+    89.776,
+    285.02
+   ],
+   [
+    6,
+    "오전_1차",
+    63.964,
+    285.99
+   ],
+   [
+    7,
+    "오후3차",
+    0.556,
+    278.9
+   ],
+   [
+    8,
+    "오후4차",
+    0.0,
+    278.9
+   ],
+   [
+    9,
+    "오후5차",
+    -0.311,
+    276.0
+   ],
+   [
+    10,
+    "오후7차",
+    90.554,
+    268.88
+   ]
+  ],
+  "gold": [
+   [
+    134.197,
+    281.9241474276339
+   ],
+   [
+    69.478,
+    280.0271507184347
+   ],
+   [
+    4457.245,
+    271.5369595651816
+   ],
+   [
+    174.083,
+    267.7146030727967
+   ],
+   [
+    98.291,
+    284.97895735453557
+   ],
+   [
+    63.964,
+    285.99013673551116
+   ],
+   [
+    0.556,
+    278.9
+   ],
+   [
+    0.0,
+    278.9
+   ],
+   [
+    -0.311,
+    276.0
+   ],
+   [
+    88711.347,
+    268.82944629451936
+   ]
+  ]
+ },
+ {
+  "id": 4,
+  "q": "인버터 전류가 25 A를 넘는 샘플이 1,000개 이상인 세션과 그 개수는?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [4382, 6098, 6352])",
+  "attempts": 1,
+  "sql": "SELECT s.session_id, se.label, COUNT(*) AS n_samples\nFROM sample s\nJOIN session se ON se.session_id = s.session_id\nWHERE s.inv_dc_current > 25\nGROUP BY s.session_id, se.label\nHAVING COUNT(*) >= 1000\nORDER BY n_samples DESC",
+  "got": [
+   [
+    2,
+    "오후2차",
+    7249
+   ],
+   [
+    5,
+    "오전2차",
+    7064
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    6571
+   ],
+   [
+    10,
+    "오후7차",
+    6374
+   ],
+   [
+    3,
+    "오후6차",
+    6114
+   ],
+   [
+    1,
+    "오후1차",
+    4394
+   ]
+  ],
+  "gold": [
+   [
+    4382
+   ],
+   [
+    7249
+   ],
+   [
+    6098
+   ],
+   [
+    6554
+   ],
+   [
+    7062
+   ],
+   [
+    6352
+   ]
+  ]
+ },
+ {
+  "id": 5,
+  "q": "인버터 전류가 25 A를 넘는 구간에서, 보정 계수를 적용한 팩 전류의 세션별 평균은?",
+  "ok": true,
+  "why": "",
+  "attempts": 1,
+  "sql": "SELECT s.session_id,\n       s.label,\n       COUNT(*) AS n_rows,\n       AVG(c.bms_current_corr) AS avg_bms_current_corr\nFROM sample_corrected AS c\nJOIN session AS s ON s.session_id = c.session_id\nWHERE c.inv_dc_current > 25\n  AND c.bms_current_corr IS NOT NULL\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    4394,
+    79.66442876649977
+   ],
+   [
+    2,
+    "오후2차",
+    7249,
+    45.49937922472065
+   ],
+   [
+    3,
+    "오후6차",
+    6114,
+    95.05029931305202
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    6571,
+    96.58958111398569
+   ],
+   [
+    5,
+    "오전2차",
+    7064,
+    58.777250849377126
+   ],
+   [
+    6,
+    "오전_1차",
+    476,
+    45.56223739495798
+   ],
+   [
+    10,
+    "오후7차",
+    6374,
+    75.19544634452464
+   ]
+  ],
+  "gold": [
+   [
+    79.66442876649977
+   ],
+   [
+    45.49937922472065
+   ],
+   [
+    95.05029931305202
+   ],
+   [
+    96.58958111398569
+   ],
+   [
+    58.777250849377126
+   ],
+   [
+    45.56223739495798
+   ],
+   [
+    75.19544634452464
+   ]
+  ]
+ },
+ {
+  "id": 6,
+  "q": "전체 평균 속도보다 빠른 샘플이 세션별로 몇 개야?",
+  "ok": true,
+  "why": "깨진 값을 빼고 계산 (인정)",
+  "attempts": 1,
+  "sql": "WITH clean AS (\n  SELECT session_id, vehicle_speed_kmh\n  FROM sample_clean\n  WHERE vehicle_speed_kmh IS NOT NULL\n    AND COALESCE(bad_speed, 0) = 0\n),\navg_speed AS (\n  SELECT AVG(vehicle_speed_kmh) AS overall_avg FROM clean\n)\nSELECT s.session_id,\n       s.label,\n       COUNT(c.vehicle_speed_kmh) AS n_above_avg\nFROM session s\nLEFT JOIN clean c\n  ON c.session_id = s.session_id\n AND c.vehicle_speed_kmh > (SELECT overall_avg FROM avg_speed)\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    8601
+   ],
+   [
+    2,
+    "오후2차",
+    17218
+   ],
+   [
+    3,
+    "오후6차",
+    11817
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    12010
+   ],
+   [
+    5,
+    "오전2차",
+    14001
+   ],
+   [
+    6,
+    "오전_1차",
+    5021
+   ],
+   [
+    7,
+    "오후3차",
+    0
+   ],
+   [
+    8,
+    "오후4차",
+    0
+   ],
+   [
+    9,
+    "오후5차",
+    0
+   ],
+   [
+    10,
+    "오후7차",
+    13953
+   ]
+  ],
+  "gold": [
+   [
+    8626
+   ],
+   [
+    17178
+   ],
+   [
+    11822
+   ],
+   [
+    12080
+   ],
+   [
+    13988
+   ],
+   [
+    5012
+   ],
+   [
+    14098
+   ]
+  ]
+ },
+ {
+  "id": 7,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류를 인버터 전류로 나눈 비율의 세션별 평균은?",
+  "ok": true,
+  "why": "",
+  "attempts": 1,
+  "sql": "SELECT s.session_id,\n       se.label,\n       COUNT(*) AS n_rows,\n       AVG(s.bms_current * 1.0 / s.inv_dc_current) AS avg_ratio\nFROM sample AS s\nJOIN session AS se ON se.session_id = s.session_id\nWHERE s.inv_dc_current > 25\n  AND s.bms_current IS NOT NULL\nGROUP BY s.session_id, se.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    4394,
+    0.7965646978642813
+   ],
+   [
+    2,
+    "오후2차",
+    7249,
+    0.7805613979241482
+   ],
+   [
+    3,
+    "오후6차",
+    6114,
+    0.7779318836268834
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    6571,
+    0.7914269737725211
+   ],
+   [
+    5,
+    "오전2차",
+    7064,
+    0.7862420150969469
+   ],
+   [
+    6,
+    "오전_1차",
+    476,
+    0.7632187467834539
+   ],
+   [
+    10,
+    "오후7차",
+    6374,
+    0.8009142598170422
+   ]
+  ],
+  "gold": [
+   [
+    0.7965646978642813
+   ],
+   [
+    0.7805613979241482
+   ],
+   [
+    0.7779318836268834
+   ],
+   [
+    0.7914269737725211
+   ],
+   [
+    0.7862420150969469
+   ],
+   [
+    0.7632187467834539
+   ],
+   [
+    0.8009142598170422
+   ]
+  ]
+ },
+ {
+  "id": 8,
+  "q": "MCU 시각으로 본 샘플 간격(바로 앞 샘플과의 차이) 중 가장 자주 나온 값 5개와 각각의 횟수는?",
+  "ok": false,
+  "why": "정답 2번째 열 값과 같은 열이 없음 (정답 예: [673, 1139, 10153])",
+  "attempts": 1,
+  "sql": "WITH d AS (\n  SELECT stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS dt\n  FROM sample\n)\nSELECT dt AS interval_ms, COUNT(*) AS n\nFROM d\nWHERE dt IS NOT NULL\nGROUP BY dt\nORDER BY n DESC, dt\nLIMIT 5",
+  "got": [
+   [
+    10,
+    174833
+   ],
+   [
+    11,
+    10260
+   ],
+   [
+    19,
+    10152
+   ],
+   [
+    20,
+    1108
+   ],
+   [
+    30,
+    670
+   ]
+  ],
+  "gold": [
+   [
+    10,
+    174833
+   ],
+   [
+    11,
+    10260
+   ],
+   [
+    19,
+    10153
+   ],
+   [
+    20,
+    1139
+   ],
+   [
+    30,
+    673
+   ]
+  ]
+ },
+ {
+  "id": 9,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류/인버터 전류 비율의 세션별 중앙값은?",
+  "ok": true,
+  "why": "",
+  "attempts": 1,
+  "sql": "WITH r AS (\n  SELECT session_id,\n         CAST(bms_current AS REAL) / inv_dc_current AS ratio\n  FROM sample\n  WHERE inv_dc_current > 25\n    AND bms_current IS NOT NULL\n),\no AS (\n  SELECT session_id, ratio,\n         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY ratio) AS rn,\n         COUNT(*) OVER (PARTITION BY session_id) AS cnt\n  FROM r\n)\nSELECT o.session_id,\n       s.label,\n       MAX(o.cnt) AS n_rows,\n       ROUND(AVG(o.ratio), 4) AS median_ratio\nFROM o\nJOIN session s ON s.session_id = o.session_id\nWHERE o.rn IN ((o.cnt + 1) / 2, (o.cnt + 2) / 2)\nGROUP BY o.session_id, s.label\nORDER BY o.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    4394,
+    0.8005
+   ],
+   [
+    2,
+    "오후2차",
+    7249,
+    0.7953
+   ],
+   [
+    3,
+    "오후6차",
+    6114,
+    0.7964
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    6571,
+    0.7971
+   ],
+   [
+    5,
+    "오전2차",
+    7064,
+    0.7954
+   ],
+   [
+    6,
+    "오전_1차",
+    476,
+    0.8049
+   ],
+   [
+    10,
+    "오후7차",
+    6374,
+    0.8084
+   ]
+  ],
+  "gold": [
+   [
+    0.8005464480874317
+   ],
+   [
+    0.7953321364452423
+   ],
+   [
+    0.7963503649635036
+   ],
+   [
+    0.7971014492753623
+   ],
+   [
+    0.7953964194373402
+   ],
+   [
+    0.8048780487804879
+   ],
+   [
+    0.8083700440528635
+   ]
+  ]
+ },
+ {
+  "id": 10,
+  "q": "인버터 전류가 25 A를 넘는 상태가 끊기지 않고 이어진 구간은 세션별로 몇 개이고, 가장 긴 구간은 몇 샘플이야?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [7, 54, 54])",
+  "attempts": 1,
+  "sql": "WITH ordered AS (\n  SELECT session_id, row_no, inv_dc_current,\n         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY row_no) AS rn_all\n  FROM sample\n),\nhot AS (\n  SELECT session_id, row_no,\n         rn_all - ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY row_no) AS grp\n  FROM ordered\n  WHERE inv_dc_current > 25\n),\nruns AS (\n  SELECT session_id, grp, COUNT(*) AS run_len\n  FROM hot\n  GROUP BY session_id, grp\n)\nSELECT s.session_id,\n       s.label,\n       COUNT(r.grp) AS n_runs,\n       COALESCE(MAX(r.run_len), 0) AS longest_run_samples\nFROM session s\nLEFT JOIN runs r ON r.session_id = s.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    50,
+    613
+   ],
+   [
+    2,
+    "오후2차",
+    54,
+    993
+   ],
+   [
+    3,
+    "오후6차",
+    78,
+    581
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    94,
+    379
+   ],
+   [
+    5,
+    "오전2차",
+    54,
+    772
+   ],
+   [
+    6,
+    "오전_1차",
+    7,
+    137
+   ],
+   [
+    7,
+    "오후3차",
+    0,
+    0
+   ],
+   [
+    8,
+    "오후4차",
+    0,
+    0
+   ],
+   [
+    9,
+    "오후5차",
+    0,
+    0
+   ],
+   [
+    10,
+    "오후7차",
+    67,
+    624
+   ]
+  ],
+  "gold": [
+   [
+    54,
+    541
+   ],
+   [
+    54,
+    993
+   ],
+   [
+    90,
+    492
+   ],
+   [
+    107,
+    287
+   ],
+   [
+    56,
+    772
+   ],
+   [
+    7,
+    137
+   ],
+   [
+    89,
+    387
+   ]
+  ]
+ },
+ {
+  "id": 11,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류를 인버터 전류에 대해 직선으로 맞추면 세션별 기울기는?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [0.7456876396865707, 0.7708688370478927, 0.7725126823080775])",
+  "attempts": 1,
+  "sql": "WITH pts AS (\n  SELECT s.session_id,\n         s.inv_dc_current AS x,\n         s.bms_current    AS y\n  FROM sample s\n  WHERE s.inv_dc_current > 25\n    AND s.inv_dc_current IS NOT NULL\n    AND s.bms_current IS NOT NULL\n),\nagg AS (\n  SELECT session_id,\n         COUNT(*)   AS n,\n         SUM(x)     AS sx,\n         SUM(y)     AS sy,\n         SUM(x * y) AS sxy,\n         SUM(x * x) AS sxx\n  FROM pts\n  GROUP BY session_id\n)\nSELECT a.session_id,\n       se.label,\n       a.n,\n       ROUND((a.n * a.sxy - a.sx * a.sy) / NULLIF(a.n * a.sxx - a.sx * a.sx, 0), 4) AS slope,\n       ROUND((a.sy - ((a.n * a.sxy - a.sx * a.sy) / NULLIF(a.n * a.sxx - a.sx * a.sx, 0)) * a.sx) / a.n, 4) AS intercept\nFROM agg a\nJOIN session se ON se.session_id = a.session_id\nORDER BY a.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    4394,
+    0.6596,
+    10.4108
+   ],
+   [
+    2,
+    "오후2차",
+    7249,
+    0.7709,
+    0.3736
+   ],
+   [
+    3,
+    "오후6차",
+    6114,
+    0.7627,
+    0.843
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    6571,
+    0.4722,
+    30.5924
+   ],
+   [
+    5,
+    "오전2차",
+    7064,
+    0.7739,
+    0.659
+   ],
+   [
+    6,
+    "오전_1차",
+    476,
+    0.7457,
+    0.8655
+   ],
+   [
+    10,
+    "오후7차",
+    6374,
+    0.767,
+    2.5114
+   ]
+  ],
+  "gold": [
+   [
+    0.7725126823080775
+   ],
+   [
+    0.7708688370478927
+   ],
+   [
+    0.7813726563967857
+   ],
+   [
+    0.7966672720572872
+   ],
+   [
+    0.7817593861641644
+   ],
+   [
+    0.7456876396865707
+   ],
+   [
+    0.8011897789120038
+   ]
+  ]
+ },
+ {
+  "id": 12,
+  "q": "세션별 샘플 누락률(%)은?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [5.0, 5.0, 5.0])",
+  "attempts": 1,
+  "sql": "SELECT s.session_id,\n       s.label,\n       s.row_count AS expected_rows,\n       COUNT(sm.row_no) AS loaded_rows,\n       s.row_count - COUNT(sm.row_no) AS missing_rows,\n       ROUND(100.0 * (s.row_count - COUNT(sm.row_no)) / NULLIF(s.row_count, 0), 2) AS missing_pct\nFROM session s\nLEFT JOIN sample sm ON sm.session_id = s.session_id\nGROUP BY s.session_id, s.label, s.row_count\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    17066,
+    17066,
+    0,
+    0.0
+   ],
+   [
+    2,
+    "오후2차",
+    32710,
+    32710,
+    0,
+    0.0
+   ],
+   [
+    3,
+    "오후6차",
+    24286,
+    24286,
+    0,
+    0.0
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    34301,
+    34301,
+    0,
+    0.0
+   ],
+   [
+    5,
+    "오전2차",
+    33204,
+    33204,
+    0,
+    0.0
+   ],
+   [
+    6,
+    "오전_1차",
+    17479,
+    17479,
+    0,
+    0.0
+   ],
+   [
+    7,
+    "오후3차",
+    2258,
+    2258,
+    0,
+    0.0
+   ],
+   [
+    8,
+    "오후4차",
+    9159,
+    9159,
+    0,
+    0.0
+   ],
+   [
+    9,
+    "오후5차",
+    9847,
+    9847,
+    0,
+    0.0
+   ],
+   [
+    10,
+    "오후7차",
+    17717,
+    17717,
+    0,
+    0.0
+   ]
+  ],
+  "gold": [
+   [
+    9.1
+   ],
+   [
+    5.3
+   ],
+   [
+    9.8
+   ],
+   [
+    8.3
+   ],
+   [
+    5.8
+   ],
+   [
+    5.0
+   ],
+   [
+    5.0
+   ],
+   [
+    5.0
+   ],
+   [
+    5.0
+   ],
+   [
+    12.5
+   ]
+  ]
+ },
+ {
+  "id": 13,
+  "q": "세션별로 깨진 행의 비율(%)은 얼마야?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [0.0, 0.0, 0.0])",
+  "attempts": 1,
+  "sql": "SELECT s.session_id,\n       s.label,\n       COUNT(*) AS total_rows,\n       SUM(CASE WHEN c.n_bad_cols > 0 THEN 1 ELSE 0 END) AS bad_rows,\n       ROUND(100.0 * SUM(CASE WHEN c.n_bad_cols > 0 THEN 1 ELSE 0 END) / COUNT(*), 2) AS bad_pct\nFROM sample_clean c\nJOIN session s ON s.session_id = c.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    16976,
+    0,
+    0.0
+   ],
+   [
+    2,
+    "오후2차",
+    32700,
+    0,
+    0.0
+   ],
+   [
+    3,
+    "오후6차",
+    24143,
+    0,
+    0.0
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    34154,
+    0,
+    0.0
+   ],
+   [
+    5,
+    "오전2차",
+    33168,
+    0,
+    0.0
+   ],
+   [
+    6,
+    "오전_1차",
+    17479,
+    0,
+    0.0
+   ],
+   [
+    7,
+    "오후3차",
+    2258,
+    0,
+    0.0
+   ],
+   [
+    8,
+    "오후4차",
+    9159,
+    0,
+    0.0
+   ],
+   [
+    9,
+    "오후5차",
+    9847,
+    0,
+    0.0
+   ],
+   [
+    10,
+    "오후7차",
+    17542,
+    0,
+    0.0
+   ]
+  ],
+  "gold": [
+   [
+    0.527
+   ],
+   [
+    0.031
+   ],
+   [
+    0.589
+   ],
+   [
+    0.429
+   ],
+   [
+    0.108
+   ],
+   [
+    0.0
+   ],
+   [
+    0.0
+   ],
+   [
+    0.0
+   ],
+   [
+    0.0
+   ],
+   [
+    0.988
+   ]
+  ]
+ },
+ {
+  "id": 14,
+  "q": "주행 중에 MCU가 재시작한 횟수를 세션별로 알려 줘.",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [0, 0, 0])",
+  "attempts": 1,
+  "sql": "WITH ms AS (\n  SELECT session_id, row_no, stm_ms, vehicle_speed_kmh,\n         LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS prev_ms,\n         LAG(vehicle_speed_kmh) OVER (PARTITION BY session_id ORDER BY row_no) AS prev_speed\n  FROM sample_clean\n  WHERE COALESCE(bad_ms, 0) = 0\n    AND stm_ms IS NOT NULL\n),\nrestarts AS (\n  SELECT session_id, COUNT(*) AS n_restart\n  FROM ms\n  WHERE prev_ms IS NOT NULL\n    AND stm_ms < prev_ms\n    AND (COALESCE(vehicle_speed_kmh, 0) > 0 OR COALESCE(prev_speed, 0) > 0)\n  GROUP BY session_id\n)\nSELECT s.session_id, s.label, COALESCE(r.n_restart, 0) AS mcu_restart_while_driving\nFROM session s\nLEFT JOIN restarts r ON r.session_id = s.session_id\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    0
+   ],
+   [
+    2,
+    "오후2차",
+    0
+   ],
+   [
+    3,
+    "오후6차",
+    1
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    0
+   ],
+   [
+    5,
+    "오전2차",
+    0
+   ],
+   [
+    6,
+    "오전_1차",
+    0
+   ],
+   [
+    7,
+    "오후3차",
+    0
+   ],
+   [
+    8,
+    "오후4차",
+    0
+   ],
+   [
+    9,
+    "오후5차",
+    0
+   ],
+   [
+    10,
+    "오후7차",
+    0
+   ]
+  ],
+  "gold": [
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    2
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ]
+  ]
+ },
+ {
+  "id": 15,
+  "q": "보정 계수를 적용한 뒤에도 인버터 전류가 팩 전류보다 5% 넘게 큰 샘플은 부하 구간에서 세션별로 몇 %야?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [18.3, 21.9, 23.4])",
+  "attempts": 1,
+  "sql": "WITH load AS (\n  SELECT c.session_id, c.inv_dc_current, c.bms_current_corr\n  FROM sample_corrected c\n  WHERE c.inv_dc_current > 10\n    AND c.bms_current_corr IS NOT NULL\n    AND c.bms_current_corr > 0\n)\nSELECT s.session_id,\n       s.label,\n       COUNT(*) AS load_samples,\n       SUM(CASE WHEN l.inv_dc_current > 1.05 * l.bms_current_corr THEN 1 ELSE 0 END) AS inv_gt_pack_5pct,\n       ROUND(100.0 * SUM(CASE WHEN l.inv_dc_current > 1.05 * l.bms_current_corr THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct\nFROM load l\nJOIN session s ON s.session_id = l.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    4736,
+    1169,
+    24.68
+   ],
+   [
+    2,
+    "오후2차",
+    9239,
+    2227,
+    24.1
+   ],
+   [
+    3,
+    "오후6차",
+    6403,
+    1955,
+    30.53
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    7230,
+    2252,
+    31.15
+   ],
+   [
+    5,
+    "오전2차",
+    8083,
+    1837,
+    22.73
+   ],
+   [
+    6,
+    "오전_1차",
+    736,
+    194,
+    26.36
+   ],
+   [
+    10,
+    "오후7차",
+    6912,
+    1319,
+    19.08
+   ]
+  ],
+  "gold": [
+   [
+    23.4
+   ],
+   [
+    26.4
+   ],
+   [
+    32.2
+   ],
+   [
+    31.5
+   ],
+   [
+    21.9
+   ],
+   [
+    28.2
+   ],
+   [
+    18.3
+   ]
+  ]
+ },
+ {
+  "id": 16,
+  "q": "세션별로 차를 1초 넘게 멈췄던(기록이 1초 넘게 끊긴) 횟수는?",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [0, 0, 0])",
+  "attempts": 1,
+  "sql": "WITH ordered AS (\n  SELECT\n    session_id,\n    row_no,\n    (julianday(ts_utc) - julianday(LAG(ts_utc) OVER (PARTITION BY session_id ORDER BY row_no))) * 86400.0 AS gap_s\n  FROM sample\n)\nSELECT\n  s.session_id,\n  s.label,\n  COUNT(o.row_no) AS gap_over_1s_count\nFROM session s\nLEFT JOIN ordered o\n  ON o.session_id = s.session_id\n AND o.gap_s > 1.0\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
+  "got": [
+   [
+    1,
+    "오후1차",
+    0
+   ],
+   [
+    2,
+    "오후2차",
+    0
+   ],
+   [
+    3,
+    "오후6차",
+    0
+   ],
+   [
+    4,
+    "092619_465091_동_오후6시1차",
+    0
+   ],
+   [
+    5,
+    "오전2차",
+    0
+   ],
+   [
+    6,
+    "오전_1차",
+    0
+   ],
+   [
+    7,
+    "오후3차",
+    0
+   ],
+   [
+    8,
+    "오후4차",
+    0
+   ],
+   [
+    9,
+    "오후5차",
+    0
+   ],
+   [
+    10,
+    "오후7차",
+    0
+   ]
+  ],
+  "gold": [
+   [
+    2
+   ],
+   [
+    0
+   ],
+   [
+    1
+   ],
+   [
+    1
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ],
+   [
+    0
+   ]
+  ]
+ },
+ {
+  "id": 17,
+  "q": "오후2차 세션에서 속도가 가장 빨랐던 순간의 속도와 그때 인버터 전류는?",
+  "ok": true,
+  "why": "",
+  "attempts": 1,
+  "sql": "SELECT c.row_no,\n       c.vehicle_speed_kmh AS max_speed_kmh,\n       c.inv_dc_current    AS inv_dc_current_a\nFROM sample_clean AS c\nJOIN session AS s ON s.session_id = c.session_id\nWHERE s.label = '오후2차'\n  AND c.vehicle_speed_kmh IS NOT NULL\n  AND COALESCE(c.bad_speed, 0) = 0\nORDER BY c.vehicle_speed_kmh DESC, c.row_no\nLIMIT 1",
+  "got": [
+   [
+    30929,
+    69.478,
+    55.8
+   ]
+  ],
+  "gold": [
+   [
+    69.478,
+    55.8
+   ]
+  ]
+ }
+]

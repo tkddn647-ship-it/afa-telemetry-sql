@@ -13,7 +13,7 @@
   - 값 튐: 검사하는 30열 중 튄 열 이름. 3열 이상이면 '행 손상' (한 줄 전체가 밀리거나 깨짐)
   - MCU 재시작: 즉시
   - 최근 10초 누락률 > 8% : 넘으면 켜고, 7% 아래로 내려가야 끔 (8% 근처에서 깜빡이지 않게)
-  - 여러 신호 (sql/10): 프리차지 미달(접촉기가 닫힐 때 인버터 전압 < 팩의 95%), 전류 불일치 10행째, 접촉기 열림 중 전류
+  - 여러 신호 (sql/10): 프리차지 미달(접촉기가 닫힐 때 인버터 전압 < 팩의 90%), 전류 불일치 10행째, 접촉기 열림 중 전류
   - 신호 멈춤: 주행 중(속도 > 5 km/h) 인버터 전류가 5 A 이상인 같은 값으로 50행(약 0.5초) 넘게 — 분석 에이전트가 실제 로그에서 찾은 이상을 규칙으로 옮긴 것
 """
 from __future__ import annotations
@@ -182,9 +182,9 @@ def _cross_check(self, x, r, t):
     if self.prev_mc == 0 and mc == 1:
         c["closures"] += 1
         ratio = iv / bv if bv else None
-        if ratio is None or ratio < 0.95:
+        if ratio is None or ratio < 0.90:                  # KSAE 제52조 ①
             c["precharge_bad"] += 1
-            self.alerts.append((t, r, f"프리차지 미달: 접촉기가 닫힐 때 인버터 전압 {iv:g} V = 팩의 {100 * (ratio or 0):.0f}% (기준 95%)"))
+            self.alerts.append((t, r, f"프리차지 미달: 접촉기가 닫힐 때 인버터 전압 {iv:g} V = 팩의 {100 * (ratio or 0):.0f}% (기준 90%)"))
     self.prev_mc = mc
     if ii is not None and bi is not None and ii > 25 and bi <= 0.5:
         self.mm_run = self.mm_run + 1 if self.mm_last_row == r - 1 else 1
