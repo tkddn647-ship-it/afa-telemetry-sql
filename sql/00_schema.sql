@@ -59,6 +59,22 @@ CREATE TABLE scale_correction (
     decided_on  TEXT NOT NULL
 );
 
+-- 어떤 파일을 언제 넣었는지. 같은 파일(내용 해시가 같음)은 다시 넣지 않는다.
+CREATE TABLE ingest_log (
+    sha256      TEXT PRIMARY KEY,
+    file_name   TEXT NOT NULL,
+    session_id  INTEGER NOT NULL REFERENCES session(session_id),
+    loaded_at   TEXT NOT NULL
+);
+
+-- 품질 경고 규칙도 코드가 아니라 표로 둔다. 기준을 바꿀 때 코드를 안 고쳐도 된다.
+CREATE TABLE quality_rule (
+    metric      TEXT PRIMARY KEY,   -- 품질 지표 이름 (pipeline.py 가 계산)
+    op          TEXT NOT NULL CHECK (op IN ('>', '<')),
+    threshold   REAL NOT NULL,
+    message     TEXT NOT NULL
+);
+
 -- 숫자로 못 읽은 칸 (빈칸은 NULL로 넣고 여기엔 안 남김)
 CREATE TABLE load_issue (
     session_id  INTEGER NOT NULL REFERENCES session(session_id),

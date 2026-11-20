@@ -1,0 +1,87 @@
+[
+ {
+  "id": 1,
+  "q": "세션마다 샘플이 몇 개씩 있어?",
+  "gold": "SELECT row_count FROM session ORDER BY session_id"
+ },
+ {
+  "id": 2,
+  "q": "차량 속도가 60 km/h를 넘은 샘플은 전부 몇 개야?",
+  "gold": "SELECT COUNT(*) FROM sample WHERE vehicle_speed_kmh > 60"
+ },
+ {
+  "id": 3,
+  "q": "세션별 최고 속도와 평균 팩 전압을 알려 줘.",
+  "gold": "SELECT MAX(vehicle_speed_kmh), AVG(bms_voltage) FROM sample GROUP BY session_id"
+ },
+ {
+  "id": 4,
+  "q": "인버터 전류가 25 A를 넘는 샘플이 1,000개 이상인 세션과 그 개수는?",
+  "gold": "SELECT COUNT(*) FROM sample WHERE inv_dc_current > 25 GROUP BY session_id HAVING COUNT(*) >= 1000"
+ },
+ {
+  "id": 5,
+  "q": "인버터 전류가 25 A를 넘는 구간에서, 보정 계수를 적용한 팩 전류의 세션별 평균은?",
+  "gold": "SELECT AVG(s.bms_current * c.factor) FROM sample s JOIN scale_correction c ON c.column_name = 'bms_current' WHERE s.inv_dc_current > 25 GROUP BY s.session_id"
+ },
+ {
+  "id": 6,
+  "q": "전체 평균 속도보다 빠른 샘플이 세션별로 몇 개야?",
+  "gold": "SELECT COUNT(*) FROM sample WHERE vehicle_speed_kmh > (SELECT AVG(vehicle_speed_kmh) FROM sample) GROUP BY session_id"
+ },
+ {
+  "id": 7,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류를 인버터 전류로 나눈 비율의 세션별 평균은?",
+  "gold": "SELECT AVG(bms_current / inv_dc_current) FROM sample WHERE inv_dc_current > 25 GROUP BY session_id"
+ },
+ {
+  "id": 8,
+  "q": "MCU 시각으로 본 샘플 간격(바로 앞 샘플과의 차이) 중 가장 자주 나온 값 5개와 각각의 횟수는?",
+  "gold": "WITH g AS (SELECT stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM sample_flags WHERE NOT bad_ms) SELECT d, COUNT(*) AS n FROM g WHERE d IS NOT NULL GROUP BY d ORDER BY n DESC LIMIT 5"
+ },
+ {
+  "id": 9,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류/인버터 전류 비율의 세션별 중앙값은?",
+  "gold": "WITH r AS (SELECT session_id, bms_current / inv_dc_current AS v, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY bms_current / inv_dc_current) AS rn, COUNT(*) OVER (PARTITION BY session_id) AS n FROM sample WHERE inv_dc_current > 25) SELECT AVG(v) FROM r WHERE rn IN ((n+1)/2, (n+2)/2) GROUP BY session_id"
+ },
+ {
+  "id": 10,
+  "q": "인버터 전류가 25 A를 넘는 상태가 끊기지 않고 이어진 구간은 세션별로 몇 개이고, 가장 긴 구간은 몇 샘플이야?",
+  "gold": "WITH l AS (SELECT session_id, row_no - ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY row_no) AS grp FROM sample_flags WHERE inv_dc_current > 25 AND NOT bad_inv AND NOT bad_bms), seg AS (SELECT session_id, grp, COUNT(*) AS len FROM l GROUP BY session_id, grp) SELECT COUNT(*), MAX(len) FROM seg GROUP BY session_id"
+ },
+ {
+  "id": 11,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 팩 전류를 인버터 전류에 대해 직선으로 맞추면 세션별 기울기는?",
+  "gold": "WITH a AS (SELECT session_id, COUNT(*) n, SUM(inv_dc_current) sx, SUM(bms_current) sy, SUM(inv_dc_current*inv_dc_current) sxx, SUM(inv_dc_current*bms_current) sxy FROM sample_flags WHERE inv_dc_current > 25 AND NOT bad_inv AND NOT bad_bms GROUP BY session_id) SELECT (n*sxy - sx*sy) / (n*sxx - sx*sx) FROM a"
+ },
+ {
+  "id": 12,
+  "q": "세션별 샘플 누락률(%)은?",
+  "gold": "SELECT 누락률_pct FROM (WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms), gap AS (SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM clean) SELECT session_id, ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct FROM gap GROUP BY session_id)"
+ },
+ {
+  "id": 13,
+  "q": "세션별로 깨진 행의 비율(%)은 얼마야?",
+  "gold": "SELECT 깨진_비율_pct FROM (SELECT se.label AS 세션, se.row_count AS 전체_행,\n       SUM(bad_ms) AS 시각_깨짐, SUM(bad_inv) AS 인버터전류_튐, SUM(bad_bms) AS 팩전류_튐, SUM(bad_speed) AS 속도_튐,\n       SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed) AS 깨진_행,\n       ROUND(100.0 * SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed) / se.row_count, 3) AS 깨진_비율_pct\nFROM sample_flags JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+ },
+ {
+  "id": 14,
+  "q": "주행 중에 MCU가 재시작한 횟수를 세션별로 알려 줘.",
+  "gold": "SELECT MCU_재시작 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n    FROM clean\n)\nSELECT se.label AS 세션,\n       COUNT(d) + 1 AS 받은_샘플,\n       SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) AS 빠진_샘플,\n       ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)\n             / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM gap JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+ },
+ {
+  "id": 15,
+  "q": "보정 계수를 적용한 뒤에도 인버터 전류가 팩 전류보다 5% 넘게 큰 샘플은 부하 구간에서 세션별로 몇 %야?",
+  "gold": "SELECT 위반_보정후_pct FROM (WITH k AS (SELECT factor FROM scale_correction WHERE column_name = 'bms_current'),\nload AS (\n    SELECT f.session_id, f.inv_dc_current AS inv, f.bms_current AS bms, f.bms_current * k.factor AS bms_corr\n    FROM sample_flags f CROSS JOIN k\n    WHERE f.inv_dc_current > 25 AND NOT f.bad_inv AND NOT f.bad_bms\n)\nSELECT se.label AS 세션,\n       COUNT(*) AS 부하_행수,\n       ROUND(100.0 * SUM(inv > 1.05 * bms)      / COUNT(*), 1) AS 위반_보정전_pct,\n       ROUND(100.0 * SUM(inv > 1.05 * bms_corr) / COUNT(*), 1) AS 위반_보정후_pct\nFROM load JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+ },
+ {
+  "id": 16,
+  "q": "세션별로 차를 1초 넘게 멈췄던(기록이 1초 넘게 끊긴) 횟수는?",
+  "gold": "SELECT 멈춘_구간 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n    FROM clean\n)\nSELECT se.label AS 세션,\n       COUNT(d) + 1 AS 받은_샘플,\n       SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) AS 빠진_샘플,\n       ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)\n             / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM gap JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+ },
+ {
+  "id": 17,
+  "q": "오후2차 세션에서 속도가 가장 빨랐던 순간의 속도와 그때 인버터 전류는?",
+  "gold": "SELECT vehicle_speed_kmh, inv_dc_current FROM sample WHERE session_id = 2 ORDER BY vehicle_speed_kmh DESC LIMIT 1"
+ }
+]

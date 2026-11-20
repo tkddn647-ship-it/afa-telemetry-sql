@@ -1,3 +1,4 @@
 data/
+inbox/
 *.db
 __pycache__/
