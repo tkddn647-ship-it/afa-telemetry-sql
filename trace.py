@@ -75,6 +75,31 @@ def t_range(con, s, m):
     return f"{v}행", v == 0, q + ";"
 
 
+def t_precharge(con, s, m):
+    n, bad, r = m.get("접촉기_닫힘"), m.get("프리차지_미달"), m.get("닫힐때_전압비_최소")
+    if not n:
+        return NA, NA, ""
+    q = ("WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage "
+         f"FROM sample_clean JOIN session USING (session_id) WHERE label = '{s}') "
+         "SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;")
+    return f"닫힘 {n}번 중 미달 {bad}번 (최소 {100 * r:.0f}%)", bad == 0, q
+
+
+def t_current_match(con, s, m):
+    n, L = m.get("전류_불일치"), m.get("불일치_최장_행")
+    q = ("WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) "
+         f"WHERE label = '{s}' AND inv_dc_current > 25 AND bms_current <= 0.5) "
+         "SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;")
+    return f"{n}번 (가장 긴 것 {L}행)", n == 0, q
+
+
+def t_open_current(con, s, m):
+    v = m.get("열림중_전류_행")
+    q = (f"SELECT row_no, motor_main_contactor, inv_dc_current FROM sample_clean JOIN session USING (session_id) "
+         f"WHERE label = '{s}' AND motor_main_contactor = 0 AND ABS(inv_dc_current) > 5;")
+    return f"{v}행", v == 0, q
+
+
 # ---- 시스템 시험 ----
 def _detect():
     return (ROOT / "eval" / "detection_report.md").read_text(encoding="utf-8")
@@ -156,6 +181,11 @@ def main() -> None:
     (ROOT / "reports" / "traceability.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     known = {"REQ-05": "원인 규명: BMS 전류 CAN 신호의 스케일 계수 누락. 조치: 보정 계수 1.25 (REQ-06에서 확인).",
+             "REQ-14": "확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. "
+                       "`motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.",
+             "REQ-15": "추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), "
+                       "7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. "
+                       "인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.",
              "REQ-09": "원인 규명 (2026-11-20): 깨진 시각이 실제 MCU 재시작 바로 앞 행에 오면 '앞뒤 간격 0~200 ms' 조건이 성립하지 않아 놓침 "
                        "(300개 중 1개). 미조치: 재시작을 먼저 찾고 그 경계를 빼고 비교하는 방법 검토 필요.",
              "REQ-11": "원인 규명 (2026-11-20): 값 검사(규칙 v2)를 넣은 뒤 생김. 18건 모두 심은 결함이나 빠진 샘플에서 2행 안 — 깨진 값과 값이 바뀌는 "

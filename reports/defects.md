@@ -194,7 +194,139 @@ sql/07_physics_check.sql
 sql/07_physics_check.sql
 ```
 
-## DEF-17 [REQ-09] 품질 규칙이 깨진 시각을 모두 잡는다 — 시스템
+## DEF-17 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 오후1차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 16%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '오후1차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-18 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 오후2차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 16%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '오후2차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-19 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 오후6차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 0%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '오후6차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-20 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 092619_465091_동_오후6시1차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 31%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '092619_465091_동_오후6시1차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-21 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 오전_1차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 16%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '오전_1차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-22 [REQ-14] 메인 접촉기가 닫힐 때 프리차지가 끝나 있다 — 오후7차
+
+- 기대: 접촉기 신호 0→1 순간 인버터 전압 ≥ 팩 전압 × 0.95
+- 관찰: 닫힘 1번 중 미달 1번 (최소 16%)
+- 근거: FS Rules 2026 EV5.7.1 (두 번째 AIR를 닫기 전 차량 쪽 전압이 실제 배터리 전압의 95% 이상). 인버터 DC 전압 = 차량 쪽, BMS 팩 전압 = 배터리. 깨진 행은 빼고 판정 (한 줄 손상 행은 접촉기 신호까지 0으로 채워져 가짜 닫힘을 만듦). 신호 뜻은 확인 필요
+- 상태: 확인 필요 (2026-11-20): 접촉기 신호가 처음 1이 된 순간 인버터 전압이 팩의 0~31%, 95%까지 약 0.9초. `motor_main_contactor` 가 실제 두 번째 AIR라면 규정 위반, 프리차지 릴레이나 명령값이라면 정상일 수 있음. 신호 정의 확인 전.
+- 재현:
+
+```sql
+WITH c AS (SELECT row_no, motor_main_contactor mc, LAG(motor_main_contactor) OVER (ORDER BY row_no) p, inv_voltage, bms_voltage FROM sample_clean JOIN session USING (session_id) WHERE label = '오후7차') SELECT row_no, inv_voltage, bms_voltage, ROUND(inv_voltage / bms_voltage, 3) AS ratio FROM c WHERE mc = 1 AND p = 0;
+```
+
+## DEF-23 [REQ-15] 부하 중 인버터 전류와 팩 전류가 한 CAN 주기 넘게 어긋나지 않는다 — 오후2차
+
+- 기대: 10행 이상 이어진 불일치 0번
+- 관찰: 1번 (가장 긴 것 14행)
+- 근거: 인버터 > 25 A 인데 팩 ≤ 0.5 A. CAN 값은 약 10행(100 ms)마다 갱신되므로 그보다 짧은 불일치는 두 메시지의 갱신 시점 차이로 봄 (실제 로그 108번, 대부분 1~5행)
+- 상태: 추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), 7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. 인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.
+- 재현:
+
+```sql
+WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) WHERE label = '오후2차' AND inv_dc_current > 25 AND bms_current <= 0.5) SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;
+```
+
+## DEF-24 [REQ-15] 부하 중 인버터 전류와 팩 전류가 한 CAN 주기 넘게 어긋나지 않는다 — 오후6차
+
+- 기대: 10행 이상 이어진 불일치 0번
+- 관찰: 5번 (가장 긴 것 13행)
+- 근거: 인버터 > 25 A 인데 팩 ≤ 0.5 A. CAN 값은 약 10행(100 ms)마다 갱신되므로 그보다 짧은 불일치는 두 메시지의 갱신 시점 차이로 봄 (실제 로그 108번, 대부분 1~5행)
+- 상태: 추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), 7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. 인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.
+- 재현:
+
+```sql
+WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) WHERE label = '오후6차' AND inv_dc_current > 25 AND bms_current <= 0.5) SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;
+```
+
+## DEF-25 [REQ-15] 부하 중 인버터 전류와 팩 전류가 한 CAN 주기 넘게 어긋나지 않는다 — 092619_465091_동_오후6시1차
+
+- 기대: 10행 이상 이어진 불일치 0번
+- 관찰: 2번 (가장 긴 것 15행)
+- 근거: 인버터 > 25 A 인데 팩 ≤ 0.5 A. CAN 값은 약 10행(100 ms)마다 갱신되므로 그보다 짧은 불일치는 두 메시지의 갱신 시점 차이로 봄 (실제 로그 108번, 대부분 1~5행)
+- 상태: 추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), 7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. 인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.
+- 재현:
+
+```sql
+WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) WHERE label = '092619_465091_동_오후6시1차' AND inv_dc_current > 25 AND bms_current <= 0.5) SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;
+```
+
+## DEF-26 [REQ-15] 부하 중 인버터 전류와 팩 전류가 한 CAN 주기 넘게 어긋나지 않는다 — 오전_1차
+
+- 기대: 10행 이상 이어진 불일치 0번
+- 관찰: 1번 (가장 긴 것 10행)
+- 근거: 인버터 > 25 A 인데 팩 ≤ 0.5 A. CAN 값은 약 10행(100 ms)마다 갱신되므로 그보다 짧은 불일치는 두 메시지의 갱신 시점 차이로 봄 (실제 로그 108번, 대부분 1~5행)
+- 상태: 추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), 7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. 인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.
+- 재현:
+
+```sql
+WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) WHERE label = '오전_1차' AND inv_dc_current > 25 AND bms_current <= 0.5) SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;
+```
+
+## DEF-27 [REQ-15] 부하 중 인버터 전류와 팩 전류가 한 CAN 주기 넘게 어긋나지 않는다 — 오후7차
+
+- 기대: 10행 이상 이어진 불일치 0번
+- 관찰: 2번 (가장 긴 것 12행)
+- 근거: 인버터 > 25 A 인데 팩 ≤ 0.5 A. CAN 값은 약 10행(100 ms)마다 갱신되므로 그보다 짧은 불일치는 두 메시지의 갱신 시점 차이로 봄 (실제 로그 108번, 대부분 1~5행)
+- 상태: 추정 (2026-11-20): 10행 넘게 이어진 불일치 11번 중 10번은 팩 전류가 내내 음수(약 -1~-3 A, 페달을 뗀 상태), 7번은 그동안 인버터 전류가 한 값으로 고정 → 부하가 갑자기 줄 때 인버터 전류 값이 갱신되지 않는 것으로 보임. 인버터 CAN 메시지 주기·지연 확인 필요. 10행 미만 불일치 108번은 두 메시지의 갱신 시점 차이로 보고 결함으로 세지 않음.
+- 재현:
+
+```sql
+WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) WHERE label = '오후7차' AND inv_dc_current > 25 AND bms_current <= 0.5) SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;
+```
+
+## DEF-28 [REQ-09] 품질 규칙이 깨진 시각을 모두 잡는다 — 시스템
 
 - 기대: 깨진 시각 3종 탐지율 100%
 - 관찰: 99.7%
@@ -206,7 +338,7 @@ sql/07_physics_check.sql
 python eval_detection.py
 ```
 
-## DEF-18 [REQ-11] 품질 규칙이 멀쩡한 행을 깨졌다고 하지 않는다 — 시스템
+## DEF-29 [REQ-11] 품질 규칙이 멀쩡한 행을 깨졌다고 하지 않는다 — 시스템
 
 - 기대: 오탐 0건
 - 관찰: 18건

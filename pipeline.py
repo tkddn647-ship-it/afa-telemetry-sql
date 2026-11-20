@@ -13,7 +13,7 @@ from pathlib import Path
 
 import db
 
-QUERIES = ["02_ratio_median.sql", "05_broken_rows.sql", "06_sample_loss.sql", "07_physics_check.sql"]
+QUERIES = ["02_ratio_median.sql", "05_broken_rows.sql", "06_sample_loss.sql", "07_physics_check.sql", "10_cross_signal.sql"]
 
 
 def session_metrics(con: sqlite3.Connection, refresh_views: bool = True, session_ids: list[int] | None = None) -> dict[str, dict]:

@@ -13,6 +13,7 @@
   - 값 튐: 검사하는 30열 중 튄 열 이름. 3열 이상이면 '행 손상' (한 줄 전체가 밀리거나 깨짐)
   - MCU 재시작: 즉시
   - 최근 10초 누락률 > 8% : 넘으면 켜고, 7% 아래로 내려가야 끔 (8% 근처에서 깜빡이지 않게)
+  - 여러 신호 (sql/10): 프리차지 미달(접촉기가 닫힐 때 인버터 전압 < 팩의 95%), 전류 불일치 10행째, 접촉기 열림 중 전류
   - 신호 멈춤: 주행 중(속도 > 5 km/h) 인버터 전류가 5 A 이상인 같은 값으로 50행(약 0.5초) 넘게 — 분석 에이전트가 실제 로그에서 찾은 이상을 규칙으로 옮긴 것
 """
 from __future__ import annotations
@@ -59,6 +60,11 @@ class Detector:
     alerts: list = field(default_factory=list)
     missed_total: float = 0
     restarts: int = 0
+    # 여러 신호 검사 (sql/10 과 같은 정의, 깨진 행은 뺌)
+    prev_mc: int | None = None
+    mm_run: int = 0
+    mm_last_row: int | None = None
+    cross: dict = field(default_factory=lambda: {"closures": 0, "precharge_bad": 0, "mismatch": 0, "open_current": 0})
 
     def push(self, rec: dict | None) -> None:
         self.buf.append(rec)
@@ -128,6 +134,8 @@ class Detector:
             names = vcols or [k for k in ("bad_inv", "bad_bms", "bad_speed") if flags[k]]
             tag = " → 행 손상" if len(vcols) >= 3 else ""
             self.alerts.append((t, r, f"깨진 값: {len(names)}열 ({', '.join(names[:4])}{' …' if len(names) > 4 else ''}){tag}"))
+        if not any(flags.values()):
+            self._cross(x, r, t)
         if flags["bad_ms"]:
             return                              # 시각이 깨진 행은 간격 계산에서 뺀다 (06과 같음)
         if self.last_clean_ms is not None:
@@ -167,12 +175,38 @@ class Detector:
             self.alerts.append((t, r, f"인버터 전류가 {STUCK_ROWS}행째 {inv} A에 멈춤 (주행 중)"))
 
 
+def _cross_check(self, x, r, t):
+    """깨진 행이 아닌 행만 받아 여러 신호 검사 (sql/10 과 같은 정의)."""
+    mc, iv, bv, ii, bi = (x.get(k) for k in ("motor_main_contactor", "inv_voltage", "bms_voltage", "inv_dc_current", "bms_current"))
+    c = self.cross
+    if self.prev_mc == 0 and mc == 1:
+        c["closures"] += 1
+        ratio = iv / bv if bv else None
+        if ratio is None or ratio < 0.95:
+            c["precharge_bad"] += 1
+            self.alerts.append((t, r, f"프리차지 미달: 접촉기가 닫힐 때 인버터 전압 {iv:g} V = 팩의 {100 * (ratio or 0):.0f}% (기준 95%)"))
+    self.prev_mc = mc
+    if ii is not None and bi is not None and ii > 25 and bi <= 0.5:
+        self.mm_run = self.mm_run + 1 if self.mm_last_row == r - 1 else 1
+        self.mm_last_row = r
+        if self.mm_run == 10:
+            c["mismatch"] += 1
+            self.alerts.append((t, r, f"전류 불일치: 인버터 {ii:g} A, 팩 {bi:g} A 가 10행째 (한 CAN 주기 넘음)"))
+    if mc == 0 and ii is not None and abs(ii) > 5:
+        c["open_current"] += 1
+        self.alerts.append((t, r, f"접촉기 열림 신호인데 인버터 전류 {ii:g} A"))
+
+
+Detector._cross = _cross_check
+
+
 def rows_of(path: Path):
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rt", encoding="utf-8", newline="") as fh:
         for i, rec in enumerate(csv.DictReader(fh), start=1):
             low = {k.lower(): v for k, v in rec.items()}
-            yield {"row_no": i, "stm_ms": _f(low["stm_ms"]), **{c: _f(low[c]) for c in VALUE_CHECK}}
+            yield {"row_no": i, "stm_ms": _f(low["stm_ms"]), "motor_main_contactor": _f(low["motor_main_contactor"]),
+                   **{c: _f(low[c]) for c in VALUE_CHECK}}
 
 
 def replay(path: Path, realtime: bool = False, quiet: bool = True) -> Detector:
@@ -209,8 +243,13 @@ def check() -> int:
                for c in det.flagged}
         sql_vf = set(con.execute("SELECT row_no, column_name FROM value_flag WHERE session_id = ?", (sid,)).fetchall())
         loss = {row[0]: row for row in con.execute(open(db.ROOT / "sql" / "06_sample_loss.sql", encoding="utf-8").read())}[label]
+        x10 = con.execute(open(db.ROOT / "sql" / "10_cross_signal.sql", encoding="utf-8").read()).fetchall()
+        x10 = {row[0]: row for row in x10}[label]
+        sql_cross = {"closures": x10[1], "precharge_bad": x10[3], "mismatch": x10[4], "open_current": x10[6]}
         same = (all(det.flagged[c] == sql[c] for c in sql) and det.value_flags == sql_vf
-                and det.missed_total == loss[2] and det.restarts == loss[5])
+                and det.missed_total == loss[2] and det.restarts == loss[5] and det.cross == sql_cross)
+        if det.cross != sql_cross:
+            print("  여러 신호 검사 다름:", det.cross, sql_cross)
         bad += not same
         t0 = next(r["stm_ms"] for r in rows_of(path) if r["stm_ms"] is not None)
         dur = con.execute("SELECT COUNT(*) FROM sample WHERE session_id = ?", (sid,)).fetchone()[0] / 100.0

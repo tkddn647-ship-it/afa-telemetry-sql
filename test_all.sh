@@ -21,3 +21,4 @@ for v in v1 v2 v3 v4 v5 v6; do python3 eval_ai_sql.py $v --regrade | head -1; do
 for v in v1 v3 v4 v6; do python3 eval_ai_sql.py $v --holdout --regrade | head -1; done
 python3 trace.py | tail -1         # 요구사항 추적표
 python3 replay.py --check | tail -1  # 실시간 판정 = SQL 판정 (다르면 실패)
+python3 eval_cross.py | grep '^맞음'   # 여러 신호 검사 (REQ-14~16) 시험

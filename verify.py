@@ -85,6 +85,20 @@ def python_numbers() -> dict:
 
         inv, bms = df.inv_dc_current[ok], df.bms_current[ok]
         res[(i, "viol_after")] = round(100 * (inv > 1.05 * bms * 1.25).mean(), 1)
+
+        # 여러 신호 검사 (sql/10 과 같은 정의를 pandas로): 깨진 행을 뺀 뒤
+        cl = df[~fl.any(axis=1)].copy()
+        cl["row_no"] = cl.index + 1
+        mc = cl.motor_main_contactor
+        close = cl[(mc == 1) & (mc.shift(1) == 0)]
+        ratio = close.inv_voltage / close.bms_voltage
+        res[(i, "closures")] = len(close)
+        res[(i, "precharge_bad")] = int((ratio < 0.95).sum())
+        m = (cl.inv_dc_current > 25) & (cl.bms_current <= 0.5)
+        r = cl.row_no[m]
+        grp = (r.diff() != 1).cumsum()                     # 행 번호가 1씩 이어지는 덩어리
+        res[(i, "mismatch")] = int((r.groupby(grp).size() >= 10).sum())
+        res[(i, "open_current")] = int(((mc == 0) & (cl.inv_dc_current.abs() > 5)).sum())
     return res
 
 
@@ -107,6 +121,9 @@ def sql_numbers() -> dict:
     for row in q("07_physics_check.sql"):
         i = row[0]
         res[(i, "viol_after")] = row[3]
+    for row in q("10_cross_signal.sql"):
+        i = row[0]
+        res[(i, "closures")], res[(i, "precharge_bad")], res[(i, "mismatch")], res[(i, "open_current")] = row[1], row[3], row[4], row[6]
     return res
 
 
