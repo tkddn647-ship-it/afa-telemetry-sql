@@ -6,6 +6,10 @@
 --   샘플이 빠진 곳에서는 정상 프레임도 1~2행만 보일 수 있어서다 (예: 2행이지만 120 ms 동안 유지된 값).
 --   지속 시간 = 그 값이 끝난 다음 행의 stm_ms - 그 값이 처음 나온 행의 stm_ms.
 --   시각이 깨져 시간을 잴 수 없으면(0 ms 미만 또는 1초 초과) 행 수로만 판단한다.
+-- 숫자 글자 검사 (2026-11-21, digit_min_dev 가 있는 열만: 서스펜션 4열·조향각):
+--   기준(min_dev = 열 범위의 1배)보다 작아도, 중앙값에서 digit_min_dev(범위의 20%) 넘게 벗어났고
+--   앞 행이나 뒷 행과의 차이가 정확히 (1~9) x 10, 100, 1000 이면 숫자 글자가 끼어들거나 빠지거나 바뀐 것으로 본다.
+--   예: 7.34 -> 27.34 -> 7.34,  -60.3 -> -0.3 -> -60.3. 분석 에이전트(v2)가 찾은 빈틈.
 INSERT INTO value_flag (session_id, row_no, column_name, value, median5)
 WITH w AS (
     SELECT session_id, row_no, {col} AS v,
@@ -16,7 +20,7 @@ WITH w AS (
     WHERE session_id IN (SELECT session_id FROM temp.refresh_session)
     WINDOW o AS (PARTITION BY session_id ORDER BY row_no)
 ), m AS (
-    SELECT session_id, row_no, v,
+    SELECT session_id, row_no, v, ABS(v - b) AS db_, ABS(v - d) AS dd_,
            CASE WHEN v = d THEN te - tc        -- 이 행과 다음 행이 같은 값
                 WHEN v = b THEN td - tb        -- 앞 행과 이 행이 같은 값
                 ELSE td - tc END AS dur,       -- 이 행만
@@ -27,5 +31,12 @@ WITH w AS (
 )
 SELECT session_id, row_no, '{col}', v, med
 FROM m
-WHERE ABS(v - med) > (SELECT min_dev FROM value_check WHERE column_name = '{col}')
+WHERE (ABS(v - med) > (SELECT min_dev FROM value_check WHERE column_name = '{col}')
+       OR (ABS(v - med) > (SELECT digit_min_dev FROM value_check WHERE column_name = '{col}')     -- NULL 이면 거짓
+           AND (   (ABS(db_ - 10 * ROUND(db_ / 10)) < 0.005 AND ROUND(db_ / 10) BETWEEN 1 AND 9)
+                OR (ABS(db_ - 100 * ROUND(db_ / 100)) < 0.005 AND ROUND(db_ / 100) BETWEEN 1 AND 9)
+                OR (ABS(db_ - 1000 * ROUND(db_ / 1000)) < 0.005 AND ROUND(db_ / 1000) BETWEEN 1 AND 9)
+                OR (ABS(dd_ - 10 * ROUND(dd_ / 10)) < 0.005 AND ROUND(dd_ / 10) BETWEEN 1 AND 9)
+                OR (ABS(dd_ - 100 * ROUND(dd_ / 100)) < 0.005 AND ROUND(dd_ / 100) BETWEEN 1 AND 9)
+                OR (ABS(dd_ - 1000 * ROUND(dd_ / 1000)) < 0.005 AND ROUND(dd_ / 1000) BETWEEN 1 AND 9))))
   AND (dur IS NULL OR dur <= 50 OR dur < 0 OR dur > 1000);

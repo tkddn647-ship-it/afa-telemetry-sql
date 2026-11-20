@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import db
-from verify import VALUE_CHECK
+from verify import DIGIT_CHECK, VALUE_CHECK, digit_step
 
 WINDOW_MS = 10_000
 LOSS_LIMIT = 8.0
@@ -91,7 +91,10 @@ class Detector:
             vals = [r[col] for r in self.buf]
             if None in vals:
                 continue
-            if abs(vals[2] - sorted(vals)[2]) > md:
+            dev = abs(vals[2] - sorted(vals)[2])
+            digit = col in DIGIT_CHECK and dev > DIGIT_CHECK[col] and bool(
+                digit_step([vals[2] - vals[1], vals[2] - vals[3]]).any())
+            if dev > md or digit:
                 # 그 값이 실제로 나타난 시간 (sql/01a 와 같은 정의). 50 ms 넘게 유지됐으면 정상 프레임
                 v, b, d = vals[2], vals[1], vals[3]
                 ends = (tc, te) if v == d else (tb, td) if v == b else (tc, td)

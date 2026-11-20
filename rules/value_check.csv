@@ -1,31 +1,31 @@
-column_name,kind,range_p1_p99,multiple,min_dev
-fr,매 행 바뀜,24.55,1.0,24.55
-fl,매 행 바뀜,27.26,1.0,27.26
-rr,매 행 바뀜,25.91,1.0,25.91
-rl,매 행 바뀜,27.97,1.0,27.97
-x_g,가속도,1.657,2.0,3.314
-y_g,가속도,2.907,2.0,5.814
-z_g,가속도,0.9648,2.0,1.93
-ecu_temp,값 유지,5,0.05,0.25
-steering_angle,매 행 바뀜,183.1,1.0,183.1
-steering_speed,매 행 바뀜,340,1.0,340
-inv_temp_igt,값 유지,39.8,0.05,1.99
-inv_temp_motor,값 유지,46,0.05,2.3
-inv_motor_speed,값 유지,4043,0.05,202.2
-vehicle_speed_kmh,값 유지,89.89,0.05,4.494
-inv_dc_current,값 유지,157.9,0.05,7.895
-inv_voltage,값 유지,290.8,0.05,14.54
-inv_shudder_torque,값 유지,1,0.05,0.05
-inv_id_feedback,값 유지,108.7,0.05,5.435
-inv_iq_feedback,값 유지,311.6,0.05,15.58
-inv_torque_commanded,값 유지,154.1,0.05,7.705
-inv_torque_feedback,값 유지,160.9,0.05,8.045
-inv_id_command,값 유지,88.05,0.05,4.403
-inv_iq_command,값 유지,302,0.05,15.1
-bms_charge,값 유지,1,0.05,0.05
-bms_voltage,값 유지,18.3,0.05,0.915
-bms_current,값 유지,126.9,0.05,6.345
-bms_ccl,값 유지,2,0.05,0.1
-bms_dcl,값 유지,1,0.05,0.05
-bms_temp_maxvalue,값 유지,6,0.05,0.3
-bms_capacity,값 유지,250,0.05,12.5
+column_name,kind,range_p1_p99,multiple,min_dev,digit_min_dev
+fr,매 행 바뀜,24.55,1.0,24.55,4.91
+fl,매 행 바뀜,27.26,1.0,27.26,5.452
+rr,매 행 바뀜,25.91,1.0,25.91,5.182
+rl,매 행 바뀜,27.97,1.0,27.97,5.594
+x_g,가속도,1.657,2.0,3.314,
+y_g,가속도,2.907,2.0,5.814,
+z_g,가속도,0.9648,2.0,1.93,
+ecu_temp,값 유지,5,0.05,0.25,
+steering_angle,매 행 바뀜,183.1,1.0,183.1,36.62
+steering_speed,매 행 바뀜,340,1.0,340,
+inv_temp_igt,값 유지,39.8,0.05,1.99,
+inv_temp_motor,값 유지,46,0.05,2.3,
+inv_motor_speed,값 유지,4043,0.05,202.2,
+vehicle_speed_kmh,값 유지,89.89,0.05,4.494,
+inv_dc_current,값 유지,157.9,0.05,7.895,
+inv_voltage,값 유지,290.8,0.05,14.54,
+inv_shudder_torque,값 유지,1,0.05,0.05,
+inv_id_feedback,값 유지,108.7,0.05,5.435,
+inv_iq_feedback,값 유지,311.6,0.05,15.58,
+inv_torque_commanded,값 유지,154.1,0.05,7.705,
+inv_torque_feedback,값 유지,160.9,0.05,8.045,
+inv_id_command,값 유지,88.05,0.05,4.403,
+inv_iq_command,값 유지,302,0.05,15.1,
+bms_charge,값 유지,1,0.05,0.05,
+bms_voltage,값 유지,18.3,0.05,0.915,
+bms_current,값 유지,126.9,0.05,6.345,
+bms_ccl,값 유지,2,0.05,0.1,
+bms_dcl,값 유지,1,0.05,0.05,
+bms_temp_maxvalue,값 유지,6,0.05,0.3,
+bms_capacity,값 유지,250,0.05,12.5,

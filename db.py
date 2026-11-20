@@ -73,8 +73,9 @@ def create(path: Path = DB) -> sqlite3.Connection:
 
 VALUE_CHECK_CSV = ROOT / "rules" / "value_check.csv"
 SCHEMA_V2 = """
-CREATE TABLE IF NOT EXISTS value_check (column_name TEXT PRIMARY KEY, kind TEXT NOT NULL, range_p1_p99 REAL NOT NULL,
-                                        multiple REAL NOT NULL, min_dev REAL NOT NULL);
+DROP TABLE IF EXISTS value_check;   -- 매번 CSV에서 다시 채우므로 열이 바뀌어도 안전하게 새로 만든다
+CREATE TABLE value_check (column_name TEXT PRIMARY KEY, kind TEXT NOT NULL, range_p1_p99 REAL NOT NULL,
+                          multiple REAL NOT NULL, min_dev REAL NOT NULL, digit_min_dev REAL);
 CREATE TABLE IF NOT EXISTS value_flag (session_id INTEGER NOT NULL, row_no INTEGER NOT NULL, column_name TEXT NOT NULL,
                                        value REAL NOT NULL, median5 REAL NOT NULL, PRIMARY KEY (session_id, row_no, column_name));
 """
@@ -85,10 +86,10 @@ def refresh_flags(con: sqlite3.Connection, session_ids: list[int] | None = None)
     session_ids 를 주면 그 세션만 다시 계산 (pipeline.py 가 새 로그만 처리할 때). 예전 DB에 표가 없으면 만든다."""
     con.executescript(SCHEMA_V2)
     with open(VALUE_CHECK_CSV, encoding="utf-8") as fh:
-        rows = [(r["column_name"], r["kind"], float(r["range_p1_p99"]), float(r["multiple"]), float(r["min_dev"]))
+        rows = [(r["column_name"], r["kind"], float(r["range_p1_p99"]), float(r["multiple"]), float(r["min_dev"]),
+                 float(r["digit_min_dev"]) if r.get("digit_min_dev") else None)
                 for r in csv.DictReader(fh)]
-    con.execute("DELETE FROM value_check")
-    con.executemany("INSERT INTO value_check VALUES (?,?,?,?,?)", rows)
+    con.executemany("INSERT INTO value_check VALUES (?,?,?,?,?,?)", rows)
     ids = session_ids if session_ids is not None else [r[0] for r in con.execute("SELECT session_id FROM session")]
     con.execute("CREATE TEMP TABLE IF NOT EXISTS refresh_session (session_id INTEGER PRIMARY KEY)")
     con.execute("DELETE FROM temp.refresh_session")

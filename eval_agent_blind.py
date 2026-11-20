@@ -51,7 +51,8 @@ def natural(df: pd.DataFrame, min_len: int = 50) -> dict:
             "bms_half": runs((df.inv_dc_current > 25) & (df.bms_current < 0.5 * 0.8 * df.inv_dc_current))}
 
 
-def build(seed: int = 10, kinds: tuple[str, ...] = ("stuck", "v_offset", "speed_0"), tag: str = "") -> tuple[Path, dict]:
+def build(seed: int = 10, kinds: tuple[str, ...] = ("stuck", "v_offset", "speed_0"), tag: str = "",
+          length: int = 300) -> tuple[Path, dict]:
     work = WORK / tag if tag else WORK
     work.mkdir(parents=True, exist_ok=True)
     dbp = work / "agent_blind.db"
@@ -63,12 +64,12 @@ def build(seed: int = 10, kinds: tuple[str, ...] = ("stuck", "v_offset", "speed_
         rng = random.Random(seed + i)
         base = faults.base_from(src)
         df, _ = faults.inject(base, rng)
-        df, hidden = faults.inject_blind(df, rng, kinds=kinds)
+        df, hidden = faults.inject_blind(df, rng, kinds=kinds, length=length)
         label = f"시험{i}"
         path = work / f"sensor_log_20990102_{label}.csv.gz"
         write_gz(df, path)
         db.load_file(con, path)
-        truths[label] = {"hidden": hidden, "natural": natural(base)}
+        truths[label] = {"hidden": hidden, "natural": natural(base, min(50, length))}
     db.refresh_flags(con)
     for label, t in truths.items():          # 심은 구간이 값 검사에 걸려 '깨진 값'으로 빠지지 않았는지 확인
         sid = con.execute("SELECT session_id FROM session WHERE label = ?", (label,)).fetchone()[0]
@@ -103,7 +104,8 @@ def main() -> None:
     KINDS.update({k: ALL_KINDS[k] for k in kinds})
     out_dir = OUT if not tag else EVAL / f"agent_blind_{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    dbp, truths = build(int(arg("--seed", "10")), kinds, tag)
+    length = int(arg("--length", "300"))
+    dbp, truths = build(int(arg("--seed", "10")), kinds, tag, length)
     jobs = [(mode, label, k) for mode in modes for label in truths for k in range(1, runs + 1)]
     tasks = {"hint": agent.TASK_HINT, "blind": agent.TASK_BLIND, "v2": agent.TASK_V2}
     extra = {"v2": {"schema": agent.SCHEMA_V2, "tools": ",mcp__afa__column_profile"}}
@@ -127,7 +129,7 @@ def main() -> None:
                                               encoding="utf-8")
 
     lines = ["# 분석 에이전트 blind 시험\n",
-             f"`python {' '.join(sys.argv)}` · 세션 3개에 규칙에 없는 이상 {len(KINDS)}종(각 300행)을 숨기고, 지시문 {len(modes)}가지로 각 {runs}번 실행.\n",
+             f"`python {' '.join(sys.argv)}` · 세션 3개에 규칙에 없는 이상 {len(KINDS)}종(각 {length}행)을 숨기고, 지시문 {len(modes)}가지로 각 {runs}번 실행.\n",
              "- hint: 지시문 3번에 '신호가 같은 값에 멈춘 구간이나 신호끼리 서로 모순되는 구간처럼' 이 있음 (이전 eval_agent.py 와 같음)",
              "- blind: 그 구절을 뺌 ('지표에 안 잡히는 이상이 있는지 직접 찾아라' 만)",
              "- v2: blind + column_profile 도구(열마다 요약) + '모든 열을 확인하고, 하나 찾았다고 멈추지 말 것' (이상 종류는 알려 주지 않음)\n",

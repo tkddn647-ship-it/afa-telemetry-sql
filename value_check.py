@@ -49,16 +49,23 @@ def kind_of(c: str) -> tuple[str, float]:
     return "값 유지", 0.05
 
 
+# 숫자 글자 검사(2026-11-21)를 붙일 열: 소수 값이 매 행 바뀌는 열. steering_speed 는 4의 배수인 정수라
+# '차이가 정확히 10의 배수'가 정상 변화에서도 자주 나와(10세션 72행) 뺐다.
+DIGIT_COLS = {"fr", "fl", "rr", "rl", "steering_angle"}
+DIGIT_FRACTION = 0.2
+
+
 def make() -> None:
     base = pd.concat([faults.base_from(f, rule="v1") for f in sorted((db.ROOT / "data").glob("*.csv.gz"))])   # 기준표를 만들 때 쓴 바탕 (v1)
     RULES.parent.mkdir(exist_ok=True)
     with open(RULES, "w", encoding="utf-8", newline="") as fh:
         wr = csv.writer(fh)
-        wr.writerow(["column_name", "kind", "range_p1_p99", "multiple", "min_dev"])
+        wr.writerow(["column_name", "kind", "range_p1_p99", "multiple", "min_dev", "digit_min_dev"])
         for c in CHECK:
             r = float(base[c].quantile(0.99) - base[c].quantile(0.01)) or 1.0      # 값이 하나뿐인 열은 1
             k, m = kind_of(c)
-            wr.writerow([c.lower(), k, f"{r:.4g}", m, f"{r * m:.4g}"])
+            wr.writerow([c.lower(), k, f"{r:.4g}", m, f"{r * m:.4g}",
+                         f"{r * DIGIT_FRACTION:.4g}" if c.lower() in DIGIT_COLS else ""])
     print(RULES)
 
 

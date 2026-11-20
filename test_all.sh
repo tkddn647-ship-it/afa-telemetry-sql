@@ -24,3 +24,4 @@ python3 replay.py --check | tail -1  # 실시간 판정 = SQL 판정 (다르면 
 python3 eval_cross.py | grep '^맞음'   # 여러 신호 검사 (REQ-14~16) 시험
 python3 history.py | grep '^알림'      # 세션별 변화 판정 (기준 세션끼리 비교)
 python3 eval_history.py | grep '맞음' # 변화 판정 시험 (약 3분)
+python3 eval_digit.py | grep '^| 합계'  # 숫자 글자 검사 시험

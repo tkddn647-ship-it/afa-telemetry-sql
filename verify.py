@@ -19,6 +19,19 @@ FILES = sorted((ROOT / "data").glob("*.csv.gz"))
 
 VALUE_CHECK = {r["column_name"]: float(r["min_dev"])
                for r in csv.DictReader(open(ROOT / "rules" / "value_check.csv", encoding="utf-8"))}
+DIGIT_CHECK = {r["column_name"]: float(r["digit_min_dev"])
+               for r in csv.DictReader(open(ROOT / "rules" / "value_check.csv", encoding="utf-8")) if r.get("digit_min_dev")}
+
+
+def digit_step(diff) -> np.ndarray:
+    """차이가 정확히 (1~9) x 10, 100, 1000 인가 (숫자 글자 하나가 끼어듦·빠짐·바뀜). sql/01a 와 같은 판정."""
+    diff = np.abs(np.asarray(diff, dtype=float))
+    out = np.zeros(diff.shape, bool)
+    with np.errstate(invalid="ignore"):
+        for k in (10, 100, 1000):
+            q = np.round(diff / k)
+            out |= (np.abs(diff - q * k) < 0.005) & (q >= 1) & (q <= 9)
+    return out
 
 
 def value_flags(df: pd.DataFrame) -> pd.DataFrame:
@@ -33,7 +46,12 @@ def value_flags(df: pd.DataFrame) -> pd.DataFrame:
         dur = np.where(x == x.shift(-1), t.shift(-2) - t, np.where(x == x.shift(1), t.shift(-1) - t.shift(1), t.shift(-1) - t))
         dur = pd.Series(dur, index=df.index)
         short = dur.isna() | (dur <= 50) | (dur < 0) | (dur > 1000)
-        out[col] = ((x - med).abs() > md).fillna(False) & short
+        big = ((x - med).abs() > md).fillna(False)
+        if col in DIGIT_CHECK:
+            dig = ((x - med).abs() > DIGIT_CHECK[col]).fillna(False) & \
+                (digit_step((x - x.shift(1)).to_numpy()) | digit_step((x - x.shift(-1)).to_numpy()))
+            big = big | dig
+        out[col] = big & short
     return out
 
 
