@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import os
 import hashlib
 import re
 import sqlite3
@@ -10,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-DB = ROOT / "telemetry.db"
+DB = Path(os.environ.get("TELEMETRY_DB", ROOT / "telemetry.db"))   # CI는 가짜 데이터용 DB를 따로 씀
 
 # 원본 CSV 열 (표에서는 소문자). 값이 하나도 없는 메타 열 11개는 넣지 않는다.
 COLUMNS = [

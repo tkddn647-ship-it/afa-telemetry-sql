@@ -162,8 +162,8 @@
  {
   "id": 103,
   "q": "세션별로 빠진 샘플은 몇 개야?",
-  "ok": true,
-  "why": "",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [118.0, 481.0, 518.0])",
   "attempts": 1,
   "sql": "WITH ok AS (\n  SELECT session_id, row_no, CAST(stm_ms AS REAL) AS ms\n  FROM sample_flags\n  WHERE bad_ms = 0 OR bad_ms IS NULL\n),\ngaps AS (\n  SELECT session_id,\n         ms - LAG(ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n  FROM ok\n)\nSELECT s.session_id,\n       s.label,\n       COALESCE(SUM(CASE WHEN g.d > 15 AND g.d <= 1000\n                         THEN ROUND(g.d / 10.0) - 1 ELSE 0 END), 0) AS missing_samples\nFROM session s\nLEFT JOIN gaps g ON g.session_id = s.session_id\nGROUP BY s.session_id, s.label\nORDER BY s.session_id",
   "got": [
@@ -220,19 +220,19 @@
   ],
   "gold": [
    [
-    1723.0
+    1716.0
    ],
    [
     1815.0
    ],
    [
-    2647.0
+    2634.0
    ],
    [
-    3117.0
+    3109.0
    ],
    [
-    2059.0
+    2056.0
    ],
    [
     921.0
@@ -247,7 +247,7 @@
     518.0
    ],
    [
-    2537.0
+    2523.0
    ]
   ]
  },

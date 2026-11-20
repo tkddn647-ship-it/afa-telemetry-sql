@@ -1,18 +1,42 @@
 [
- {"id": 101, "q": "세션별로 평균 팩 전압에서 평균 인버터 전압을 빼면 얼마야?",
-  "gold": "SELECT AVG(bms_voltage) - AVG(inv_voltage) FROM sample GROUP BY session_id"},
- {"id": 102, "q": "인버터 전류가 25 A를 넘는 구간에서 보정한 팩 전류의 세션별 중앙값은?",
-  "gold": "WITH k AS (SELECT factor FROM scale_correction WHERE column_name='bms_current'), r AS (SELECT f.session_id, f.bms_current * k.factor AS v, ROW_NUMBER() OVER (PARTITION BY f.session_id ORDER BY f.bms_current) AS rn, COUNT(*) OVER (PARTITION BY f.session_id) AS n FROM sample_flags f CROSS JOIN k WHERE f.inv_dc_current > 25 AND NOT f.bad_inv AND NOT f.bad_bms) SELECT AVG(v) FROM r WHERE rn IN ((n+1)/2, (n+2)/2) GROUP BY session_id"},
- {"id": 103, "q": "세션별로 빠진 샘플은 몇 개야?",
-  "gold": "WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms), gap AS (SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM clean) SELECT SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) FROM gap GROUP BY session_id"},
- {"id": 104, "q": "속도 값이 튄 행은 세션별로 몇 개야?",
-  "gold": "SELECT SUM(bad_speed) FROM sample_flags GROUP BY session_id"},
- {"id": 105, "q": "세션 전체 샘플 중에 부하 구간 샘플이 차지하는 비율(%)은?",
-  "gold": "SELECT 100.0 * SUM(inv_dc_current > 25 AND NOT bad_inv AND NOT bad_bms) / COUNT(*) FROM sample_flags GROUP BY session_id"},
- {"id": 106, "q": "기록이 1초 넘게 끊긴 구간 중 가장 긴 것은 세션별로 몇 초야?",
-  "gold": "WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms), gap AS (SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM clean) SELECT MAX(d) / 1000.0 FROM gap WHERE d > 1000 GROUP BY session_id"},
- {"id": 107, "q": "오후6차에서 MCU가 재시작한 순간의 row_no는?",
-  "gold": "WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms AND session_id = 3), gap AS (SELECT row_no, stm_ms - LAG(stm_ms) OVER (ORDER BY row_no) AS d FROM clean) SELECT row_no FROM gap WHERE d < 0"},
- {"id": 108, "q": "깨진 값은 빼고, 세션별 최대 인버터 전류는?",
-  "gold": "SELECT MAX(inv_dc_current) FROM sample_flags WHERE NOT bad_inv GROUP BY session_id"}
+ {
+  "id": 101,
+  "q": "세션별로 평균 팩 전압에서 평균 인버터 전압을 빼면 얼마야?",
+  "gold": "SELECT AVG(bms_voltage) - AVG(inv_voltage) FROM sample GROUP BY session_id"
+ },
+ {
+  "id": 102,
+  "q": "인버터 전류가 25 A를 넘는 구간에서 보정한 팩 전류의 세션별 중앙값은?",
+  "gold": "WITH k AS (SELECT factor FROM scale_correction WHERE column_name='bms_current'), r AS (SELECT f.session_id, f.bms_current * k.factor AS v, ROW_NUMBER() OVER (PARTITION BY f.session_id ORDER BY f.bms_current) AS rn, COUNT(*) OVER (PARTITION BY f.session_id) AS n FROM sample_flags f CROSS JOIN k WHERE f.inv_dc_current > 25 AND NOT f.bad_inv AND NOT f.bad_bms) SELECT AVG(v) FROM r WHERE rn IN ((n+1)/2, (n+2)/2) GROUP BY session_id"
+ },
+ {
+  "id": 103,
+  "q": "세션별로 빠진 샘플은 몇 개야?",
+  "gold": "SELECT 빠진_샘플 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id,\n           stm_ms - LAG(stm_ms) OVER w        AS d,\n           row_no - LAG(row_no) OVER w - 1    AS skipped\n    FROM clean\n    WINDOW w AS (PARTITION BY session_id ORDER BY row_no)\n),\nmiss AS (\n    SELECT session_id, d,\n           CASE WHEN d > 15 AND d <= 1000 THEN MAX(ROUND(d / 10.0) - 1 - skipped, 0) ELSE 0 END AS m\n    FROM gap\n)\nSELECT se.label AS 세션,\n       se.row_count AS 받은_샘플,\n       SUM(m) AS 빠진_샘플,\n       ROUND(100.0 * SUM(m) / (se.row_count + SUM(m)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM miss JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+ },
+ {
+  "id": 104,
+  "q": "속도 값이 튄 행은 세션별로 몇 개야?",
+  "gold": "SELECT SUM(bad_speed) FROM sample_flags GROUP BY session_id"
+ },
+ {
+  "id": 105,
+  "q": "세션 전체 샘플 중에 부하 구간 샘플이 차지하는 비율(%)은?",
+  "gold": "SELECT 100.0 * SUM(inv_dc_current > 25 AND NOT bad_inv AND NOT bad_bms) / COUNT(*) FROM sample_flags GROUP BY session_id"
+ },
+ {
+  "id": 106,
+  "q": "기록이 1초 넘게 끊긴 구간 중 가장 긴 것은 세션별로 몇 초야?",
+  "gold": "WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms), gap AS (SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM clean) SELECT MAX(d) / 1000.0 FROM gap WHERE d > 1000 GROUP BY session_id"
+ },
+ {
+  "id": 107,
+  "q": "오후6차에서 MCU가 재시작한 순간의 row_no는?",
+  "gold": "WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms AND session_id = 3), gap AS (SELECT row_no, stm_ms - LAG(stm_ms) OVER (ORDER BY row_no) AS d FROM clean) SELECT row_no FROM gap WHERE d < 0"
+ },
+ {
+  "id": 108,
+  "q": "깨진 값은 빼고, 세션별 최대 인버터 전류는?",
+  "gold": "SELECT MAX(inv_dc_current) FROM sample_flags WHERE NOT bad_inv GROUP BY session_id"
+ }
 ]

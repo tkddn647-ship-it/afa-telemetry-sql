@@ -5,10 +5,14 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 
+import db
+
 ROOT = Path(__file__).parent
-DB = ROOT / "telemetry.db"
+DB = db.DB
+OUT = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else ROOT / "results.md"
 
 
 def md_table(cols: list[str], rows: list[tuple]) -> str:
@@ -36,7 +40,7 @@ def main() -> None:
         print(" | ".join(cols))
         for r in rows:
             print(" | ".join(str(v) for v in r))
-    (ROOT / "results.md").write_text("".join(out), encoding="utf-8")
+    OUT.write_text("".join(out), encoding="utf-8")
     con.close()
 
 

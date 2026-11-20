@@ -48,8 +48,11 @@ def python_numbers() -> dict:
 
         res[(i, "broken")] = int(fl.any(axis=1).sum())
 
-        d = df.stm_ms[~fl.bad_ms].diff()
-        res[(i, "missed")] = float(((d[(d > 15) & (d <= 1000)] / 10).round() - 1).sum())
+        clean = df[~fl.bad_ms]
+        d = clean.stm_ms.diff()
+        skipped = pd.Series(clean.index, index=clean.index).diff() - 1   # 그 사이에 뺀 깨진 시각 행 수
+        m = ((d / 10).round() - 1 - skipped).clip(lower=0)
+        res[(i, "missed")] = float(m[(d > 15) & (d <= 1000)].sum())
 
         inv, bms = df.inv_dc_current[ok], df.bms_current[ok]
         res[(i, "viol_after")] = round(100 * (inv > 1.05 * bms * 1.25).mean(), 1)

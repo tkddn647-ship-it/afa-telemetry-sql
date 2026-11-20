@@ -57,7 +57,7 @@
  {
   "id": 12,
   "q": "세션별 샘플 누락률(%)은?",
-  "gold": "SELECT 누락률_pct FROM (WITH clean AS (SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms), gap AS (SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d FROM clean) SELECT session_id, ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct FROM gap GROUP BY session_id)"
+  "gold": "SELECT 누락률_pct FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id,\n           stm_ms - LAG(stm_ms) OVER w        AS d,\n           row_no - LAG(row_no) OVER w - 1    AS skipped\n    FROM clean\n    WINDOW w AS (PARTITION BY session_id ORDER BY row_no)\n),\nmiss AS (\n    SELECT session_id, d,\n           CASE WHEN d > 15 AND d <= 1000 THEN MAX(ROUND(d / 10.0) - 1 - skipped, 0) ELSE 0 END AS m\n    FROM gap\n)\nSELECT se.label AS 세션,\n       se.row_count AS 받은_샘플,\n       SUM(m) AS 빠진_샘플,\n       ROUND(100.0 * SUM(m) / (se.row_count + SUM(m)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM miss JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
  },
  {
   "id": 13,
@@ -67,7 +67,7 @@
  {
   "id": 14,
   "q": "주행 중에 MCU가 재시작한 횟수를 세션별로 알려 줘.",
-  "gold": "SELECT MCU_재시작 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n    FROM clean\n)\nSELECT se.label AS 세션,\n       COUNT(d) + 1 AS 받은_샘플,\n       SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) AS 빠진_샘플,\n       ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)\n             / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM gap JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+  "gold": "SELECT MCU_재시작 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id,\n           stm_ms - LAG(stm_ms) OVER w        AS d,\n           row_no - LAG(row_no) OVER w - 1    AS skipped\n    FROM clean\n    WINDOW w AS (PARTITION BY session_id ORDER BY row_no)\n),\nmiss AS (\n    SELECT session_id, d,\n           CASE WHEN d > 15 AND d <= 1000 THEN MAX(ROUND(d / 10.0) - 1 - skipped, 0) ELSE 0 END AS m\n    FROM gap\n)\nSELECT se.label AS 세션,\n       se.row_count AS 받은_샘플,\n       SUM(m) AS 빠진_샘플,\n       ROUND(100.0 * SUM(m) / (se.row_count + SUM(m)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM miss JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
  },
  {
   "id": 15,
@@ -77,7 +77,7 @@
  {
   "id": 16,
   "q": "세션별로 차를 1초 넘게 멈췄던(기록이 1초 넘게 끊긴) 횟수는?",
-  "gold": "SELECT 멈춘_구간 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id, stm_ms - LAG(stm_ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n    FROM clean\n)\nSELECT se.label AS 세션,\n       COUNT(d) + 1 AS 받은_샘플,\n       SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) AS 빠진_샘플,\n       ROUND(100.0 * SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)\n             / (COUNT(d) + 1 + SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM gap JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+  "gold": "SELECT 멈춘_구간 FROM (WITH clean AS (\n    SELECT session_id, row_no, stm_ms FROM sample_flags WHERE NOT bad_ms\n),\ngap AS (\n    SELECT session_id,\n           stm_ms - LAG(stm_ms) OVER w        AS d,\n           row_no - LAG(row_no) OVER w - 1    AS skipped\n    FROM clean\n    WINDOW w AS (PARTITION BY session_id ORDER BY row_no)\n),\nmiss AS (\n    SELECT session_id, d,\n           CASE WHEN d > 15 AND d <= 1000 THEN MAX(ROUND(d / 10.0) - 1 - skipped, 0) ELSE 0 END AS m\n    FROM gap\n)\nSELECT se.label AS 세션,\n       se.row_count AS 받은_샘플,\n       SUM(m) AS 빠진_샘플,\n       ROUND(100.0 * SUM(m) / (se.row_count + SUM(m)), 1) AS 누락률_pct,\n       SUM(d > 1000) AS 멈춘_구간,\n       SUM(d < 0)    AS MCU_재시작\nFROM miss JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
  },
  {
   "id": 17,

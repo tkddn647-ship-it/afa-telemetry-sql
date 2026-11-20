@@ -1,4 +1,6 @@
 data/
 inbox/
+faulted/
+synthetic/
 *.db
 __pycache__/

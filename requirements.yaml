@@ -1,0 +1,80 @@
+# 요구사항 정의. 번호마다 근거와 판정 기준, 이를 확인하는 시험(trace.py 의 함수 이름)을 연결한다.
+# scope: session = 주행 세션마다 판정, system = 분석 시스템 자체를 판정
+- id: REQ-01
+  title: 모든 칸을 숫자로 읽을 수 있다
+  basis: 신호 정의 (load.py 가 숫자로 못 읽은 칸은 load_issue 에 남김)
+  scope: session
+  test: t_load_issue
+  criterion: load_issue 0건
+- id: REQ-02
+  title: MCU 시각이 깨진 행은 0.05% 이하
+  basis: 데이터 품질 (시리얼 전송 중 숫자가 빠지거나 끼어듦)
+  scope: session
+  test: t_broken_ts
+  criterion: 깨진 시각 행 / 전체 행 ≤ 0.05%
+- id: REQ-03
+  title: 샘플 누락률 8% 이하
+  basis: 계측 주기 10 ms, 분석에 필요한 최소 밀도
+  scope: session
+  test: t_loss
+  criterion: 누락률 ≤ 8%
+- id: REQ-04
+  title: 주행 중 MCU 재시작 없음
+  basis: 계측 연속성 (재시작하면 시계가 0부터 다시 셈)
+  scope: session
+  test: t_restart
+  criterion: 재시작 0회
+- id: REQ-05
+  title: 팩 전류 신호의 배율이 맞다 (원본)
+  basis: 물리 기준 - 인버터는 배터리에서 전류를 받으므로 부하 구간 팩/인버터 비율 ≈ 1
+  scope: session
+  test: t_scale_raw
+  criterion: 부하 구간 팩/인버터 비율 중앙값 0.95~1.05
+- id: REQ-06
+  title: 보정 계수를 적용하면 배율이 맞는다
+  basis: REQ-05 결함의 조치 확인 (scale_correction 표의 계수)
+  scope: session
+  test: t_scale_corr
+  criterion: 보정 뒤 비율 중앙값 0.95~1.05
+- id: REQ-07
+  title: 보정 뒤 물리 기준 위반 30% 이하
+  basis: 물리 기준 - 팩 전류 ≥ 인버터 전류 (잡음 여유 5%)
+  scope: session
+  test: t_physics_corr
+  criterion: 인버터 > 보정 팩×1.05 인 부하 샘플 ≤ 30%
+- id: REQ-08
+  title: 깨진 값을 뺀 뒤 값이 물리 범위 안에 있다
+  basis: 차량 성능 범위 (속도 -1~150 km/h, 인버터 전류 -50~400 A). 처음엔 속도 하한을 0으로 뒀으나 정지 상태에서 -0.6 km/h까지의 영점 오차가 모든 주행에서 나와 -1로 고침 (AI_LOG)
+  scope: session
+  test: t_range
+  criterion: 범위 밖 행 0건
+- id: REQ-09
+  title: 품질 규칙이 깨진 시각을 모두 잡는다
+  basis: 결함 주입 시험 (faults.py, eval_detection.py)
+  scope: system
+  test: t_detect_ts
+  criterion: 깨진 시각 3종 탐지율 100%
+- id: REQ-10
+  title: 품질 규칙이 기준의 2배 넘게 튄 값을 모두 잡는다
+  basis: 결함 주입 시험
+  scope: system
+  test: t_detect_big_spike
+  criterion: 크기 2배 이상 탐지율 100%
+- id: REQ-11
+  title: 품질 규칙이 멀쩡한 행을 깨졌다고 하지 않는다
+  basis: 결함 주입 시험
+  scope: system
+  test: t_detect_fp
+  criterion: 오탐 0건
+- id: REQ-12
+  title: AI가 보낸 쓰기 문장은 실행되지 않는다
+  basis: ask.py 안전장치
+  scope: system
+  test: t_ai_guard
+  criterion: 쓰기·스키마 변경 시도 4종 모두 거절, 연결이 읽기 전용
+- id: REQ-13
+  title: AI 분석 도우미가 처음 보는 질문의 80% 이상을 맞힌다
+  basis: eval_ai_sql.py --holdout, 지금 쓰는 정의서 버전(ask.py 기본값)으로 채점. v3은 6/8로 실패였다. v4 때 이 8문항은 결과를 이미 한 번 본 문항이라 엄밀한 '처음 보는 문항'은 아니다
+  scope: system
+  test: t_ai_holdout
+  criterion: 정답률 ≥ 80%

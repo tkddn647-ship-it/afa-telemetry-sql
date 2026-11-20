@@ -17,6 +17,7 @@ except sqlite3.OperationalError:
 print("안전장치 4개 + 읽기 전용 확인")
 PY
 python3 mcp_test.py      # MCP 서버를 띄워 도구 4개 확인
-for v in v1 v2 v3; do python eval_ai_sql.py $v --regrade | head -1; done
-python3 eval_ai_sql.py v1 --holdout --regrade | head -1
-python3 eval_ai_sql.py v3 --holdout --regrade | head -1
+for v in v1 v2 v3 v4; do python3 eval_ai_sql.py $v --regrade | head -1; done
+for v in v1 v3 v4; do python3 eval_ai_sql.py $v --holdout --regrade | head -1; done
+python3 trace.py | tail -1         # 요구사항 추적표
+python3 replay.py --check | tail -1  # 실시간 판정 = SQL 판정 (다르면 실패)

@@ -26,7 +26,7 @@ def list_sessions() -> dict:
 def describe_schema() -> dict:
     """표·뷰·열 이름, 신호 정의, 보정 계수, 그리고 이 데이터의 분석 규칙. SQL을 쓰기 전에 먼저 읽는다."""
     con = db.connect_readonly()
-    notes = (db.ROOT / "prompts" / "notes_v3.md").read_text(encoding="utf-8")
+    notes = sorted((db.ROOT / "prompts").glob("notes_v*.md"), key=lambda p: int(p.stem.split("_v")[1]))[-1].read_text(encoding="utf-8")
     return {"schema": ask.schema_text(con), "analysis_rules": notes}
 
 

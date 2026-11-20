@@ -1,7 +1,7 @@
 """말로 질문하면 AI가 SQL을 짜고, 안전장치를 통과한 쿼리만 실행해 답한다.
 
 사용: python ask.py "오후2차에서 가장 빨랐던 속도는?"
-      python ask.py --notes v1 "..."      (AI에게 주는 분석 규칙 버전, 기본 v3)
+      python ask.py --notes v1 "..."      (AI에게 주는 분석 규칙 버전, 기본 v4)
 
 AI 호출은 Claude Code CLI(`claude -p`)를 쓴다. 다른 명령을 쓰려면 환경변수 AI_CMD.
 
@@ -115,7 +115,7 @@ class Answer:
     error: str | None = None
 
 
-def ask(question: str, notes_version: str = "v3", con: sqlite3.Connection | None = None) -> Answer:
+def ask(question: str, notes_version: str = "v4", con: sqlite3.Connection | None = None) -> Answer:
     con = con or db.connect_readonly()
     notes_file = NOTES_DIR / f"notes_{notes_version}.md"
     notes = notes_file.read_text(encoding="utf-8") if notes_file.exists() else ""
@@ -142,7 +142,7 @@ def ask(question: str, notes_version: str = "v3", con: sqlite3.Connection | None
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("question")
-    ap.add_argument("--notes", default="v3")
+    ap.add_argument("--notes", default="v4")
     a = ask(ap.parse_args().question, ap.parse_args().notes)
     print("SQL:\n" + a.sql + "\n")
     if a.rejected:

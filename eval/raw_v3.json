@@ -798,8 +798,8 @@
  {
   "id": 12,
   "q": "세션별 샘플 누락률(%)은?",
-  "ok": true,
-  "why": "",
+  "ok": false,
+  "why": "정답 1번째 열 값과 같은 열이 없음 (정답 예: [5.0, 5.0, 5.0])",
   "attempts": 1,
   "sql": "WITH good AS (\n  SELECT session_id, row_no, CAST(stm_ms AS REAL) AS ms\n  FROM sample_flags\n  WHERE bad_ms = 0\n),\ngaps AS (\n  SELECT session_id,\n         ms - LAG(ms) OVER (PARTITION BY session_id ORDER BY row_no) AS d\n  FROM good\n),\nper_session AS (\n  SELECT session_id,\n         COUNT(*) AS received,\n         SUM(CASE WHEN d > 15 AND d <= 1000 THEN ROUND(d / 10.0) - 1 ELSE 0 END) AS missing\n  FROM gaps\n  GROUP BY session_id\n)\nSELECT s.session_id,\n       s.label,\n       p.received,\n       p.missing,\n       p.missing * 100.0 / (p.received + p.missing) AS missing_rate_pct\nFROM session s\nJOIN per_session p ON p.session_id = s.session_id\nORDER BY s.session_id",
   "got": [
@@ -876,7 +876,7 @@
   ],
   "gold": [
    [
-    9.2
+    9.1
    ],
    [
     5.3
