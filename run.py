@@ -23,9 +23,10 @@ def md_table(cols: list[str], rows: list[tuple]) -> str:
 
 def main() -> None:
     con = sqlite3.connect(DB)
+    db.refresh_flags(con)          # 01a(값 검사 → value_flag 표) + 01(표시 뷰)
     out = ["# 실행 결과\n", "`python run.py`가 만든 파일. 직접 고치지 않는다.\n"]
     for f in sorted((ROOT / "sql").glob("*.sql")):
-        if f.name.startswith("00_"):
+        if f.name.startswith(("00_", "01")):
             continue
         sql = f.read_text(encoding="utf-8")
         if "CREATE VIEW" in sql:

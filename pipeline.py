@@ -16,11 +16,11 @@ import db
 QUERIES = ["02_ratio_median.sql", "05_broken_rows.sql", "06_sample_loss.sql", "07_physics_check.sql"]
 
 
-def session_metrics(con: sqlite3.Connection, refresh_views: bool = True) -> dict[str, dict]:
+def session_metrics(con: sqlite3.Connection, refresh_views: bool = True, session_ids: list[int] | None = None) -> dict[str, dict]:
     """세션 라벨 -> {지표 이름: 값}. sql/ 의 분석 쿼리를 그대로 다시 쓴다.
-    refresh_views=False 는 읽기 전용 연결용 (뷰는 이미 DB에 있음)."""
+    refresh_views=False 는 읽기 전용 연결용 (표시는 이미 DB에 있음). session_ids 를 주면 그 세션의 표시만 다시 계산."""
     if refresh_views:
-        con.executescript((db.ROOT / "sql" / "01_flags.sql").read_text(encoding="utf-8"))
+        db.refresh_flags(con, session_ids)
     out: dict[str, dict] = {}
     for name in QUERIES:
         cur = con.execute((db.ROOT / "sql" / name).read_text(encoding="utf-8"))
@@ -66,7 +66,8 @@ def main() -> None:
     args = ap.parse_args()
 
     con = db.connect() if db.DB.exists() else db.create()
-    new_labels = []
+    had_flags = con.execute("SELECT 1 FROM sqlite_master WHERE name = 'value_flag'").fetchone() is not None
+    new_labels, new_ids = [], []
     for p in sorted(args.inbox.glob("*.csv.gz")):
         sid, n = db.load_file(con, p)
         if sid is None:
@@ -74,9 +75,11 @@ def main() -> None:
             continue
         label = con.execute("SELECT label FROM session WHERE session_id = ?", (sid,)).fetchone()[0]
         new_labels.append(label)
+        new_ids.append(sid)
         print(f"넣음: {p.name} -> {label}, {n:,}행")
 
-    metrics = session_metrics(con)
+    # 튄 값 검사는 새로 넣은 세션만 계산 (전체 다시 하면 약 15초). 예전 DB라 표가 없으면 전체.
+    metrics = session_metrics(con, session_ids=new_ids if had_flags else None)
     out_dir = db.ROOT / "reports"
     out_dir.mkdir(exist_ok=True)
     targets = list(metrics) if args.all else new_labels

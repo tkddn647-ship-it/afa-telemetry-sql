@@ -39,7 +39,9 @@ rep = (db.ROOT / "eval" / "detection_report_synthetic.md").read_text(encoding="u
 ts = re.findall(r"\| ts_\w+ \| \d+ \| \d+ \| ([\d.]+)% \|", rep)
 check("깨진 시각 탐지율 100%", ts and all(float(x) == 100.0 for x in ts), str(ts))
 fp = [int(x) for x in re.findall(r"\| bad_\w+ \| (\d+) \|", rep)]
-check("오탐 0", fp and sum(fp) == 0, str(fp))
+far = re.findall(r"2행 넘게 떨어진 것: (\d+)개", rep)
+# 규칙 v2(값 검사)부터는 결함 바로 옆 정상 행이 같이 표시될 수 있다 (REQ-11, README 6-3). 떨어진 곳의 오탐은 0이어야 한다.
+check("결함에서 떨어진 곳의 오탐 0", far and int(far[0]) == 0, f"오탐 {fp}, 떨어진 것 {far}")
 big = re.findall(r"\| spike_\w+ \(\S+\) \| [^|]+\| [^|]+\| [^|]+\| (\d+)/(\d+) \|", rep)
 check("기준의 2배 넘게 튄 값은 전부 잡음", big and all(a == b for a, b in big), str(big))
 

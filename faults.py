@@ -91,7 +91,9 @@ def inject(df: pd.DataFrame, rng: random.Random) -> tuple[pd.DataFrame, dict]:
             # i행부터 시계를 (현재값 - 작은값)만큼 당긴다: 이후 값은 계속 10 ms씩 늘지만 i에서 한 번 크게 줄어듦
             offset = int(stm.iat[i]) - rng.randrange(30_000, 60_000)
             if offset > 1000:
-                stm.iloc[i:] = stm.iloc[i:] - offset
+                # 다음 '원래 있던' 재시작 전까지만 당긴다. 전체를 당기면 원래 재시작 뒤의 시각이 음수가 됨 (2026-11-20 발견, AI_LOG #19)
+                nxt = next((j for j in range(i + 1, n) if stm.iat[j] < stm.iat[j - 1] - 1000), n)
+                stm.iloc[i:nxt] = stm.iloc[i:nxt] - offset
                 restarts += 1
     df["stm_ms"] = stm
     marked = pd.Series("", index=df.index)
@@ -101,21 +103,25 @@ def inject(df: pd.DataFrame, rng: random.Random) -> tuple[pd.DataFrame, dict]:
         if i in sizes:
             size_col.iat[i] = sizes[i]
     df["_truth"], df["_size"] = marked, size_col
+    kept = pd.Series(True, index=df.index)
+    kept.iloc[drop_idx] = False
+    after_drop = sorted({int(kept.iloc[:i].sum()) + 1 for i in drop_idx if i + 1 < n and kept.iat[min(i + 1, n - 1)]})
     df = df.drop(index=drop_idx).reset_index(drop=True)
     truth = {
         "rows": [{"row_no": int(r) + 1, "kind": k, **({"size": df.at[r, "_size"]} if k in SPIKE else {})}
                  for r, k in df["_truth"].items() if k],
         "dropped_samples": dropped_samples,
+        "drop_at": after_drop,            # 연속 행을 뺀 자리 바로 뒤 행의 row_no (오탐 위치 분석용)
         "restarts": restarts,
         "counts": COUNTS,
     }
     return df.drop(columns=["_truth", "_size"]), truth
 
 
-def base_from(path: Path) -> pd.DataFrame:
-    """원본에서 이미 깨진 것으로 표시된 행을 뺀 바탕 데이터."""
+def base_from(path: Path, rule: str = "v2") -> pd.DataFrame:
+    """원본에서 이미 깨진 것으로 표시된 행을 뺀 바탕 데이터. rule='v1' 은 규칙을 바꾸기 전 실험(eval_models.py)을 다시 낼 때."""
     df = pd.read_csv(path, dtype={"timestamp": str})
-    bad = flags(df).any(axis=1)
+    bad = flags(df, rule).any(axis=1)
     return df[~bad].reset_index(drop=True)
 
 

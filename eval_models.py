@@ -9,6 +9,8 @@
      결함을 심기 전 바탕에서 어느 방법이든 표시한 행은 '정답 모름'으로 빼고 채점하고, 따로 표로 보여 준다.
   3. 방법마다 점수 하나를 내고 기준값을 바꿔 가며 잰다. 기준값은 시드 1~3(조정용)에서 정하고 시드 4~6(시험용)에서 잰다.
      비교는 '오탐을 같은 수준으로 맞췄을 때 얼마나 잡나'로 한다.
+  5. 이 비교를 보고 만든 '규칙 v2'(5행 중앙값 + 50 ms, value_check.py)도 같은 데이터로 잰다. 기준값을 여기서 고르지 않았다.
+     '지금 규칙'은 규칙 v1 (2026-11-20 전).
   4. 바탕 데이터는 지금 규칙이 깨졌다고 본 행을 뺀 것이라, 지금 규칙의 오탐 0은 구조상 당연하다. 그래서 오탐 0 자체는 장점으로 세지 않는다.
 """
 from __future__ import annotations
@@ -24,7 +26,7 @@ import json
 
 import db
 import faults
-from verify import flags
+from verify import flags, value_flags
 
 COLS = {"inv_dc_current": (20, 1000, 200, 100), "bms_current": (10, 500, 100, 50),
         "vehicle_speed_kmh": (5, 5000, 30, 15)}          # 심을 크기 범위, 지금 규칙의 기준(큰 차이, 앞뒤 근접)
@@ -81,9 +83,9 @@ def main() -> None:
     runs = []            # (seed, col, {method: score}, truth{i: size}, unknown set, n)
     unknown_rows = []    # 바탕에서 표시된 행 (정답 모름)
     for f in files:
-        base = faults.base_from(f)
+        base = faults.base_from(f, rule="v1")   # 규칙을 바꾸기 전 실험이라 v1 기준 바탕
         raw = pd.read_csv(f, dtype={"timestamp": str})
-        orig_row = np.flatnonzero(~flags(raw).any(axis=1)) + 1     # 바탕 데이터 행 -> 원본 파일 행 번호
+        orig_row = np.flatnonzero(~flags(raw, "v1").any(axis=1)) + 1     # 바탕 데이터 행 -> 원본 파일 행 번호
         base_flag = {}
         for col in COLS:
             x = base[col].astype(float)
@@ -97,9 +99,11 @@ def main() -> None:
                                      float(s_rule[i]), float(s_h[i])))
         for seed in TUNE + TEST:
             df, truth = inject_spikes(base, random.Random(seed))
+            v2 = value_flags(df)          # 이 비교 뒤에 채택한 규칙 v2 (sql/01a): 기준을 이 시험으로 고르지 않아 그대로 잰다
             for col in COLS:
                 x = df[col].astype(float)
                 scores = {m: np.nan_to_num(fn(x, seed)) for m, fn in METHODS.items()}
+                scores["규칙 v2"] = v2[col].astype(float).to_numpy()
                 runs.append((seed, col, scores, truth[col], base_flag[col], len(df)))
 
     def evaluate(col, method, thr, seeds, width=None):
@@ -138,10 +142,11 @@ def main() -> None:
             for w in (1, 2):
                 hit, fp, rows = evaluate(col, m, thr, TEST, width=w)
                 result[col].setdefault(name, {"threshold": float(thr), "fp": fp, "rows": rows})[f"width{w}"] = hit
-                out.append(f"| {name} | {w}행 | {thr:.3g} | " + " | ".join(f"{hit[b[0]][0]}/{hit[b[0]][1]}" for b in BUCKETS)
+                out.append(f"| {name} | {w}행 | {'열별 표 (rules/value_check.csv)' if '채택' in name else f'{thr:.3g}'} | " + " | ".join(f"{hit[b[0]][0]}/{hit[b[0]][1]}" for b in BUCKETS)
                            + f" | {fp} ({1e4 * fp / rows:.2f}) |")
             return out
         lines += row("지금 규칙", "기준 낮춘 규칙", th)
+        lines += row("규칙 v2 (채택)", "규칙 v2", 0.5)
         for m in METHODS:
             pool = np.concatenate([s[m] for sd, c, s, *_ in runs if c == col and sd in TUNE])
             pos = pool[pool > 0]

@@ -39,8 +39,7 @@ def build() -> tuple[Path, dict]:
         db.load_file(con, path)
         truths[label] = {"restarts": t["restarts"],
                          "broken_ts": sum(r["kind"].startswith("ts_") for r in t["rows"]), "stuck": stuck}
-    con.executescript((db.ROOT / "sql" / "01_flags.sql").read_text(encoding="utf-8"))
-    m = pipeline.session_metrics(con)
+    m = pipeline.session_metrics(con)          # 값 검사 표시까지 다시 계산
     for label in truths:
         truths[label]["rule"] = m[label]
     con.close()

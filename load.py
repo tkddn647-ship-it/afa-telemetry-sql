@@ -10,4 +10,5 @@ paths = sorted(Path(p) for p in (sys.argv[1:] or (db.ROOT / "data").glob("*.csv.
 for p in paths:
     sid, n = db.load_file(con, p)
     print(f"{p.name}: {n}행")
+db.refresh_flags(con)   # 깨진 값 표시 (value_flag 표 + sample_flags 뷰)
 print("합계", con.execute("SELECT COUNT(*) FROM sample").fetchone()[0], "행 ->", db.DB.name)

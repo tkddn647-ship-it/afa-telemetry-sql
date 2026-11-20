@@ -1,14 +1,16 @@
 """실시간 리플레이: 저장된 로그를 한 행씩 흘려보내며, 들어오는 즉시 품질을 판정하고 경고를 낸다.
 
 주행이 끝난 뒤 DB에서 하던 검사(sql/01_flags.sql, sql/06)를 '받는 중에' 하는 버전이다.
-판정 규칙은 SQL과 같고, 앞뒤 두 행을 봐야 하므로 판정은 2행(약 20 ms) 늦게 나온다.
+판정 규칙은 SQL과 같고(sql/01_flags.sql 규칙 v2, 값 검사 기준은 rules/value_check.csv),
+앞뒤 두 행을 봐야 하므로 판정은 2행(약 20 ms) 늦게 나온다.
 
 사용: python replay.py data/sensor_log_20260811_오후7차.csv.gz            (최대 속도로 재생)
       python replay.py <파일> --realtime                                   (실제 속도 100 Hz로 재생, 화면에 경고)
       python replay.py --check                                             (DB의 SQL 판정과 행 단위로 같은지 전체 세션 확인)
 
 경고 종류:
-  - 깨진 시각/값: 행마다 즉시
+  - 깨진 시각: 행마다 즉시
+  - 값 튐: 검사하는 30열 중 튄 열 이름. 3열 이상이면 '행 손상' (한 줄 전체가 밀리거나 깨짐)
   - MCU 재시작: 즉시
   - 최근 10초 누락률 > 8% : 넘으면 켜고, 7% 아래로 내려가야 끔 (8% 근처에서 깜빡이지 않게)
   - 신호 멈춤: 주행 중(속도 > 5 km/h) 인버터 전류가 5 A 이상인 같은 값으로 50행(약 0.5초) 넘게 — 분석 에이전트가 실제 로그에서 찾은 이상을 규칙으로 옮긴 것
@@ -25,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import db
+from verify import VALUE_CHECK
 
 WINDOW_MS = 10_000
 LOSS_LIMIT = 8.0
@@ -50,7 +53,9 @@ class Detector:
     stuck_val: float | None = None
     stuck_len: int = 0
     stuck_alarm: bool = False
-    flagged: dict = field(default_factory=lambda: {"bad_ms": set(), "bad_inv": set(), "bad_bms": set(), "bad_speed": set()})
+    flagged: dict = field(default_factory=lambda: {"bad_ms": set(), "bad_inv": set(), "bad_bms": set(), "bad_speed": set(),
+                                                   "bad_value": set()})
+    value_flags: set = field(default_factory=set)      # (row_no, 열) — SQL의 value_flag 표와 비교
     alerts: list = field(default_factory=list)
     missed_total: float = 0
     restarts: int = 0
@@ -70,6 +75,25 @@ class Detector:
             return False
         return abs(x[col] - p[col]) > big and abs(x[col] - n[col]) > big and abs(n[col] - p[col]) < near
 
+    def _value_cols(self) -> list[str]:
+        """5행(앞뒤 2행씩) 중앙값에서 min_dev 넘게 벗어난 열. 5행이 다 있어야 판정 (SQL과 같음)."""
+        if len(self.buf) < 5 or None in self.buf:
+            return []
+        out = []
+        tb, tc, td, te = (r["stm_ms"] for r in list(self.buf)[1:])
+        for col, md in VALUE_CHECK.items():
+            vals = [r[col] for r in self.buf]
+            if None in vals:
+                continue
+            if abs(vals[2] - sorted(vals)[2]) > md:
+                # 그 값이 실제로 나타난 시간 (sql/01a 와 같은 정의). 50 ms 넘게 유지됐으면 정상 프레임
+                v, b, d = vals[2], vals[1], vals[3]
+                ends = (tc, te) if v == d else (tb, td) if v == b else (tc, td)
+                dur = None if None in ends else ends[1] - ends[0]
+                if dur is None or dur <= 50 or dur < 0 or dur > 1000:
+                    out.append(col)
+        return out
+
     def _bad_ms(self):
         b = list(self.buf)
         x = b[-3]
@@ -88,12 +112,22 @@ class Detector:
         if x is None:
             return
         r, t = x["row_no"], x["stm_ms"]
-        flags = {"bad_ms": self._bad_ms(), "bad_inv": self._spike("inv_dc_current", 200, 100),
-                 "bad_bms": self._spike("bms_current", 100, 50), "bad_speed": self._spike("vehicle_speed_kmh", 30, 15)}
+        vcols = self._value_cols()
+        flags = {"bad_ms": self._bad_ms(),
+                 "bad_inv": self._spike("inv_dc_current", 200, 100) or "inv_dc_current" in vcols,
+                 "bad_bms": self._spike("bms_current", 100, 50) or "bms_current" in vcols,
+                 "bad_speed": self._spike("vehicle_speed_kmh", 30, 15) or "vehicle_speed_kmh" in vcols,
+                 "bad_value": bool(vcols)}
         for k, v in flags.items():
             if v:
                 self.flagged[k].add(r)
-                self.alerts.append((t, r, f"깨진 값 {k}"))
+        self.value_flags.update((r, c) for c in vcols)
+        if flags["bad_ms"]:
+            self.alerts.append((t, r, "깨진 값: 시각"))
+        if vcols or flags["bad_inv"] or flags["bad_bms"] or flags["bad_speed"]:
+            names = vcols or [k for k in ("bad_inv", "bad_bms", "bad_speed") if flags[k]]
+            tag = " → 행 손상" if len(vcols) >= 3 else ""
+            self.alerts.append((t, r, f"깨진 값: {len(names)}열 ({', '.join(names[:4])}{' …' if len(names) > 4 else ''}){tag}"))
         if flags["bad_ms"]:
             return                              # 시각이 깨진 행은 간격 계산에서 뺀다 (06과 같음)
         if self.last_clean_ms is not None:
@@ -137,8 +171,8 @@ def rows_of(path: Path):
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rt", encoding="utf-8", newline="") as fh:
         for i, rec in enumerate(csv.DictReader(fh), start=1):
-            yield {"row_no": i, "stm_ms": _f(rec["stm_ms"]), "inv_dc_current": _f(rec["inv_dc_current"]),
-                   "bms_current": _f(rec["bms_current"]), "vehicle_speed_kmh": _f(rec["vehicle_speed_kmh"])}
+            low = {k.lower(): v for k, v in rec.items()}
+            yield {"row_no": i, "stm_ms": _f(low["stm_ms"]), **{c: _f(low[c]) for c in VALUE_CHECK}}
 
 
 def replay(path: Path, realtime: bool = False, quiet: bool = True) -> Detector:
@@ -165,7 +199,7 @@ def check() -> int:
     con = db.connect_readonly()
     bad = 0
     table = ["# 실시간 리플레이\n", "`python replay.py --check`가 만든 파일. 저장된 로그를 한 행씩 흘려 받는 중에 판정한 결과.\n",
-             "| 세션 | 길이 | 첫 누락률 경고 | 멈춤 경고 | 깨진 값 경고 | 경고 합계 | SQL 판정과 |", "|--|--|--|--|--|--|--|"]
+             "| 세션 | 길이 | 첫 누락률 경고 | 멈춤 경고 | 깨진 값 경고 (행 손상) | 경고 합계 | SQL 판정과 |", "|--|--|--|--|--|--|--|"]
     for sid, label, fname in con.execute("SELECT session_id, label, file_name FROM session ORDER BY session_id").fetchall():
         path = next((p for d in ("data", "inbox", "synthetic") for p in [db.ROOT / d / fname] if p.exists()), None)
         if path is None:
@@ -173,17 +207,20 @@ def check() -> int:
         det = replay(path)
         sql = {c: {r for (r,) in con.execute(f"SELECT row_no FROM sample_flags WHERE session_id = ? AND {c}", (sid,))}
                for c in det.flagged}
+        sql_vf = set(con.execute("SELECT row_no, column_name FROM value_flag WHERE session_id = ?", (sid,)).fetchall())
         loss = {row[0]: row for row in con.execute(open(db.ROOT / "sql" / "06_sample_loss.sql", encoding="utf-8").read())}[label]
-        same = all(det.flagged[c] == sql[c] for c in sql) and det.missed_total == loss[2] and det.restarts == loss[5]
+        same = (all(det.flagged[c] == sql[c] for c in sql) and det.value_flags == sql_vf
+                and det.missed_total == loss[2] and det.restarts == loss[5])
         bad += not same
         t0 = next(r["stm_ms"] for r in rows_of(path) if r["stm_ms"] is not None)
         dur = con.execute("SELECT COUNT(*) FROM sample WHERE session_id = ?", (sid,)).fetchone()[0] / 100.0
         first_loss = next((t for t, _, m in det.alerts if m.startswith("최근 10초")), None)
         stuck = sum(m.startswith("인버터 전류가") for _, _, m in det.alerts)
         broken = sum(m.startswith("깨진 값") for _, _, m in det.alerts)
-        table.append(f"| {label} | 약 {dur:.0f}초 | {'-' if first_loss is None else f'{(first_loss - t0) / 1000:.0f}초째'} | {stuck} | {broken} | "
+        corrupt = sum(m.endswith("행 손상") for _, _, m in det.alerts)
+        table.append(f"| {label} | 약 {dur:.0f}초 | {'-' if first_loss is None else f'{(first_loss - t0) / 1000:.0f}초째'} | {stuck} | {broken} ({corrupt}) | "
                      f"{len(det.alerts)} | {'행 단위 일치' if same else '불일치'} |")
-        print(f"{'일치' if same else '불일치'} {label}: 깨진 행 {sum(len(v) for v in det.flagged.values())}, "
+        print(f"{'일치' if same else '불일치'} {label}: 값 튐 {len(det.value_flags)}칸 (SQL {len(sql_vf)}), "
               f"빠진 샘플 {det.missed_total:g} (SQL {loss[2]:g}), 재시작 {det.restarts} (SQL {loss[5]}), 경고 {len(det.alerts)}개")
     table.append("\n길이는 행 수 / 100 (10 ms 기준 대략값). MCU 재시작이 있으면 시계가 다시 시작해 경고 시각은 참고용.")
     (db.ROOT / "reports" / "replay.md").write_text("\n".join(table) + "\n", encoding="utf-8")

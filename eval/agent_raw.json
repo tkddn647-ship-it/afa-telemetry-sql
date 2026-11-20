@@ -11,13 +11,13 @@
   "stuck": {
    "kind": "stuck",
    "column": "inv_dc_current",
-   "first_row": 9830,
-   "last_row": 10129
+   "first_row": 9837,
+   "last_row": 10136
   },
-  "claims": 10,
-  "reproduced": 10,
-  "turns": 45,
-  "seconds": 162
+  "claims": 7,
+  "reproduced": 7,
+  "turns": 28,
+  "seconds": 155
  },
  {
   "label": "시험2",
@@ -31,13 +31,13 @@
   "stuck": {
    "kind": "stuck",
    "column": "inv_dc_current",
-   "first_row": 24150,
-   "last_row": 24449
+   "first_row": 24137,
+   "last_row": 24436
   },
-  "claims": 8,
-  "reproduced": 8,
-  "turns": 25,
-  "seconds": 96
+  "claims": 7,
+  "reproduced": 7,
+  "turns": 28,
+  "seconds": 93
  },
  {
   "label": "시험3",
@@ -51,12 +51,12 @@
   "stuck": {
    "kind": "stuck",
    "column": "inv_dc_current",
-   "first_row": 11980,
-   "last_row": 12279
+   "first_row": 5182,
+   "last_row": 5481
   },
-  "claims": 8,
-  "reproduced": 8,
-  "turns": 34,
-  "seconds": 128
+  "claims": 9,
+  "reproduced": 9,
+  "turns": 28,
+  "seconds": 113
  }
 ]

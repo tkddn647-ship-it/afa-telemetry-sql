@@ -46,7 +46,7 @@ def one_run(src: Path, seed: int) -> dict:
         con = db.create(td / "t.db")
         db.load_file(con, td / "sensor_log_00000000_base.csv.gz")
         db.load_file(con, td / "sensor_log_00000000_faulted.csv.gz")
-        con.executescript((db.ROOT / "sql" / "01_flags.sql").read_text(encoding="utf-8"))
+        db.refresh_flags(con)
         flagged = {c: {r for (r,) in con.execute(f"SELECT row_no FROM sample_flags WHERE session_id = 2 AND {c}")}
                    for c in set(FLAG_OF.values())}
         loss = {row[0]: row for row in con.execute(LOSS_SQL)}
@@ -61,8 +61,13 @@ def one_run(src: Path, seed: int) -> dict:
         out["caught"][t["kind"]] += hit
         if "size" in t:
             out["spikes"].append((t["kind"], t["size"], hit))
+    marks = {t["row_no"] for t in truth["rows"]} | set(truth["drop_at"])
+    out["fp_far"] = 0
     for col, rows in flagged.items():
-        out["fp"][col] = len(rows - truth_by_flag[col])
+        fp_rows = rows - truth_by_flag[col]
+        out["fp"][col] = len(fp_rows)
+        # 심은 결함(어느 종류든)이나 뺀 행 자리에서 2행 넘게 떨어진 오탐: 결함 옆에 붙어 생긴 오탐과 구분
+        out["fp_far"] += sum(all(abs(r - m) > 2 for m in marks) for r in fp_rows)
     out["dropped_true"] = truth["dropped_samples"]
     out["dropped_found"] = loss["faulted"][2] - loss["base"][2]
     out["restart_true"] = truth["restarts"]
@@ -78,7 +83,7 @@ def main() -> None:
     a = ap.parse_args()
     files = sorted(a.src.glob("*.csv.gz"))
     caught, total, fp = defaultdict(int), defaultdict(int), defaultdict(int)
-    drop_t = drop_f = rs_t = rs_f = rows = 0
+    drop_t = drop_f = rs_t = rs_f = rows = fp_far = 0
     spikes = []
     runs = 0
     for f in files:
@@ -93,6 +98,7 @@ def main() -> None:
             drop_t += r["dropped_true"]; drop_f += r["dropped_found"]
             rs_t += r["restart_true"]; rs_f += r["restart_found"]
             rows += r["rows"]
+            fp_far += r["fp_far"]
             spikes += r["spikes"]
             print(f"{f.name} seed{seed}: " + ", ".join(f"{k} {r['caught'][k]}/{v}" for k, v in sorted(r["total"].items()))
                   + f" | 오탐 {dict(r['fp'])} | 누락 {r['dropped_found']}/{r['dropped_true']} | 재시작 {r['restart_found']}/{r['restart_true']}")
@@ -114,6 +120,7 @@ def main() -> None:
         lines.append(f"| {k} ({th:g}) | " + " | ".join(cells) + " |")
     lines += ["", "| 표시 열 | 오탐 (정답이 아닌데 깨졌다고 표시한 행) |", "|--|--|"]
     lines += [f"| {k} | {v} |" for k, v in sorted(fp.items())]
+    lines += ["", f"- 오탐 중 심은 결함·뺀 행 자리에서 2행 넘게 떨어진 것: {fp_far}개 (나머지는 결함 바로 옆 행이 같이 표시된 것)"]
     lines += ["", f"- 빠진 샘플: 심은 {drop_t}개 / 규칙이 센 증가분 {drop_f:g}개",
               f"- MCU 재시작: 심은 {rs_t}번 / 규칙이 센 증가분 {rs_f}번", ""]
     out = db.ROOT / "eval" / f"detection_report{'' if a.src.name == 'data' else '_' + a.src.name}.md"

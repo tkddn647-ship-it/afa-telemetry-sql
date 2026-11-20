@@ -17,7 +17,8 @@
  {
   "id": 4,
   "q": "인버터 전류가 25 A를 넘는 샘플이 1,000개 이상인 세션과 그 개수는?",
-  "gold": "SELECT COUNT(*) FROM sample WHERE inv_dc_current > 25 GROUP BY session_id HAVING COUNT(*) >= 1000"
+  "gold": "SELECT COUNT(*) FROM sample_flags WHERE inv_dc_current > 25 AND NOT bad_inv AND NOT bad_bms GROUP BY session_id HAVING COUNT(*) >= 1000",
+  "gold_note": "2026-11-20: 분석 규칙 4(부하 구간 질문은 bad_inv·bad_bms 행을 뺀다)와 맞춤. 전에는 차이가 0.1%라 채점 허용 오차(0.2%) 안에 숨어 있었음 (AI_LOG #21)"
  },
  {
   "id": 5,
@@ -62,7 +63,8 @@
  {
   "id": 13,
   "q": "세션별로 깨진 행의 비율(%)은 얼마야?",
-  "gold": "SELECT 깨진_비율_pct FROM (SELECT se.label AS 세션, se.row_count AS 전체_행,\n       SUM(bad_ms) AS 시각_깨짐, SUM(bad_inv) AS 인버터전류_튐, SUM(bad_bms) AS 팩전류_튐, SUM(bad_speed) AS 속도_튐,\n       SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed) AS 깨진_행,\n       ROUND(100.0 * SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed) / se.row_count, 3) AS 깨진_비율_pct\nFROM sample_flags JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)"
+  "gold": "SELECT 깨진_비율_pct FROM (SELECT se.label AS 세션, se.row_count AS 전체_행,\n       SUM(bad_ms) AS 시각_깨짐, SUM(bad_inv) AS 인버터전류_튐, SUM(bad_bms) AS 팩전류_튐, SUM(bad_speed) AS 속도_튐,\n       SUM(bad_value) AS 값_튐, SUM(n_bad_cols >= 3) AS 행_손상,\n       SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed OR bad_value) AS 깨진_행,\n       ROUND(100.0 * SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed OR bad_value) / se.row_count, 3) AS 깨진_비율_pct\nFROM sample_flags JOIN session se USING (session_id)\nGROUP BY session_id\nORDER BY session_id)",
+  "gold_note": "2026-11-20: sql/05 를 복사해 둔 정답이 옛 규칙(4개 표시) 그대로였음 → 지금 sql/05 (값 검사 포함)로 (AI_LOG #22)"
  },
  {
   "id": 14,

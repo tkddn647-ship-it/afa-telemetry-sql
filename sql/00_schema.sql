@@ -85,6 +85,25 @@ CREATE TABLE load_issue (
 
 CREATE INDEX idx_sample_load ON sample(session_id, inv_dc_current);
 
+-- 모든 숫자 열의 튄 값 검사 기준 (rules/value_check.csv 에서 읽음, value_check.py 참고)
+CREATE TABLE IF NOT EXISTS value_check (
+    column_name   TEXT PRIMARY KEY,
+    kind          TEXT NOT NULL,     -- 값 유지 / 매 행 바뀜 / 가속도
+    range_p1_p99  REAL NOT NULL,     -- 분석용 3세션의 1%~99% 분위 폭
+    multiple      REAL NOT NULL,     -- min_dev = range x multiple
+    min_dev       REAL NOT NULL      -- |값 - 5행 중앙값| 이 이것보다 크면 튄 값
+);
+
+-- 튄 값 검사 결과. 뷰로 매번 계산하면 30열 x 20만 행이라 약 15초 → 적재할 때 한 번 계산해 둔다 (db.refresh_flags)
+CREATE TABLE IF NOT EXISTS value_flag (
+    session_id  INTEGER NOT NULL,
+    row_no      INTEGER NOT NULL,
+    column_name TEXT NOT NULL,
+    value       REAL NOT NULL,
+    median5     REAL NOT NULL,
+    PRIMARY KEY (session_id, row_no, column_name)
+);
+
 -- 보정 계수를 적용한 전류. 보정 표가 비어 있으면 factor 1.0
 CREATE VIEW sample_corrected AS
 SELECT s.*,

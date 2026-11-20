@@ -5,6 +5,8 @@
 - MCU 10 ms 간격, 약 20샘플마다 1개씩 빠짐(간격 11 ms 다음 19 ms) -> 누락률 약 5%
 - 라즈베리파이 수신 시각(timestamp)은 여러 샘플이 묶여 같은 값
 - 팩 전류 = 인버터 전류 x 0.8 + 잡음  (스케일 계수가 빠진 상태를 그대로 재현)
+- CAN 값(전류·전압·속도)은 약 100 ms(10샘플)마다 새로 들어오고 그 사이엔 같은 값이 유지됨
+  (처음 버전은 매 샘플 잡음을 넣어서, 값 검사(규칙 v2)가 잡음을 튄 값으로 잡았다 — 실제 로그와 모양이 달랐던 것)
 숫자는 실제 차량 값이 아니다. 파이프라인과 검사가 돌아가는지 보는 용도.
 """
 from __future__ import annotations
@@ -46,16 +48,19 @@ def session(n: int, rng: random.Random, start_ms: int) -> pd.DataFrame:
         throttle = max(0.0, math.sin(phase / 3.0)) ** 2 if (phase % 60) < 50 else 0.0   # 50초 주행, 10초 정지
         accel = 2.5 * throttle - 0.04 * v - (1.5 if throttle == 0 and v > 0 else 0)
         v = max(0.0, v + accel * 0.01 * 3.6)
-        inv = max(0.0, 3.0 + 150 * throttle + 0.4 * v + rng.gauss(0, 4)) if throttle > 0 else max(0.0, rng.gauss(1, 1))
-        bms = 0.8 * inv + rng.gauss(0, 3)
+        if k % 10 == 1 or k == 1:          # CAN 프레임이 들어온 샘플만 새 값, 나머지는 유지
+            inv = max(0.0, 3.0 + 150 * throttle + 0.4 * v + rng.gauss(0, 4)) if throttle > 0 else max(0.0, rng.gauss(1, 1))
+            bms = 0.8 * inv + rng.gauss(0, 3)
+            v_can = v
+            inv_v, bms_v = soc_v + rng.gauss(0, 0.3), soc_v - 3 + rng.gauss(0, 0.3)
         soc_v -= inv * 1e-6
         ts_ms = start_ms + 50 * ((t - start_ms) // 50)     # 50 ms마다 묶여서 받은 것처럼
         rec = dict.fromkeys(HEADER, "")
         rec.update({
             "timestamp": pd.Timestamp("2099-01-01") + pd.Timedelta(milliseconds=ts_ms),
-            "stm_ms": t, "vehicle_speed_kmh": round(v, 3), "inv_dc_current": round(inv, 1),
-            "inv_voltage": round(soc_v + rng.gauss(0, 0.3), 1), "bms_current": round(bms, 1),
-            "bms_voltage": round(soc_v - 3 + rng.gauss(0, 0.3), 1), "x_g": round(accel / 9.8, 3),
+            "stm_ms": t, "vehicle_speed_kmh": round(v_can, 3), "inv_dc_current": round(inv, 1),
+            "inv_voltage": round(inv_v, 1), "bms_current": round(bms, 1),
+            "bms_voltage": round(bms_v, 1), "x_g": round(accel / 9.8, 3),
             "y_g": 0.0, "z_g": 1.0, "FR": 0.0, "FL": 0.0, "RR": 0.0, "RL": 0.0,
             "motor_main_contactor": 1, "can1": 1, "can2": 1,
         })
