@@ -1,0 +1,135 @@
+From 6c30026b3f17d6d06d3f2e5afe1af5147933fb6e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 20 Nov 2026 23:38:20 +0900
+Subject: [PATCH 3/3] =?UTF-8?q?fix(can):=20VSM=202(=EC=B4=88=EA=B8=B0?=
+ =?UTF-8?q?=EC=B6=A9=EC=A0=84=20=EC=A4=91)=EB=A5=BC=20=EB=A9=94=EC=9D=B8?=
+ =?UTF-8?q?=20=EC=A0=91=EC=B4=89=EA=B8=B0=20=EB=8B=AB=ED=9E=98=EC=9C=BC?=
+ =?UTF-8?q?=EB=A1=9C=20=EA=B8=B0=EB=A1=9D=ED=95=98=EB=8D=98=20=EB=A7=A4?=
+ =?UTF-8?q?=ED=95=91=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+CAN Protocol V5.9 0x0AA Byte0 기준으로 precharge = VSM 1~2, main_contactor = VSM 3~6.
+ESP32 시험 코드(esp32_motor_can.ino)와 같은 매핑. 고장·종료 상태(7, 14, 15)는 닫힘으로 보지 않음.
+2026-08-11 로그의 '접촉기 닫힘' 6번은 모두 초기충전 시작이었음 (전류 0 A, 전압 16% -> 90% 약 920 ms).
+host 시험 device/tests/test_vsm.c 추가.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012squhSFBe6dkyFm4AHTMMv
+---
+ device/ECU_test/Core/Src/can_vehicle.c | 40 +++++++++++---------------
+ device/tests/make_and_run.sh           | 11 +++++++
+ device/tests/test_vsm.c                | 25 ++++++++++++++++
+ 3 files changed, 52 insertions(+), 24 deletions(-)
+ create mode 100644 device/tests/test_vsm.c
+
+diff --git a/device/ECU_test/Core/Src/can_vehicle.c b/device/ECU_test/Core/Src/can_vehicle.c
+index eaafed0..11d5fca 100644
+--- a/device/ECU_test/Core/Src/can_vehicle.c
++++ b/device/ECU_test/Core/Src/can_vehicle.c
+@@ -329,35 +329,27 @@ static void CAN_Vehicle_ParseInvVoltage(const uint8_t *data, uint8_t dlc)
+   mc->last_rx_ms = HAL_GetTick();
+ }
+ 
++/*
++ * Cascadia VSM state (0x0AA Byte0) -> precharge / main contactor.
++ * CAN Protocol V5.9: 0 Start, 1 Pre-charge Init, 2 Pre-charge Active, 3 Pre-charge Complete,
++ *                    4 Wait, 5 Ready, 6 Motor Running, 7 Blink Fault Code, 14 Shutdown, 15 Recycle Power.
++ * 전에는 2(초기충전 중)부터 main_contactor_closed = 1 이라, 로그의 '접촉기 닫힘' 순간이 실제로는 초기충전 시작이었다
++ * (2026-08-11 로그: 그 순간 인버터 전압이 팩의 16%, 전류 0 A 로 약 920 ms 동안 90% 까지 상승).
++ * ESP32 시험 코드(esp32_motor_can.ino)와 같은 매핑으로 맞춘다. 고장·종료 상태(7, 14, 15 등)는 닫힘으로 보지 않는다.
++ * 주의: 이 값은 여전히 VSM 상태에서 추정한 것이다. 실제 AIR 상태가 필요하면 Byte3 Relay State 를 따로 기록할 것.
++ */
++static void CAN_Vehicle_MotorStatusFromVsm(uint8_t vsm_state, uint8_t *precharge_active, uint8_t *main_contactor_closed)
++{
++  *precharge_active = (uint8_t)(vsm_state == 1U || vsm_state == 2U);
++  *main_contactor_closed = (uint8_t)(vsm_state >= 3U && vsm_state <= 6U);
++}
++
+ static void CAN_Vehicle_UpdateMotorStatusFromVsm(uint8_t vsm_state)
+ {
+   CanMotorState_t *mc = &vehicle_state.motor;
+ 
+   mc->vsm_state = vsm_state;
+-
+-  /*
+-   * Cascadia VSM state (0x0AA Byte0) — precharge / main contactor 추정.
+-   * Torque/Speed(Run Mode)는 Byte4 에서 별도 파싱.
+-   */
+-  switch (vsm_state)
+-  {
+-    case 0U:
+-      mc->precharge_active = 0U;
+-      mc->main_contactor_closed = 0U;
+-      break;
+-    case 1U:
+-      mc->precharge_active = 1U;
+-      mc->main_contactor_closed = 0U;
+-      break;
+-    case 2U:
+-      mc->precharge_active = 0U;
+-      mc->main_contactor_closed = 1U;
+-      break;
+-    default:
+-      mc->precharge_active = (uint8_t)(vsm_state == 1U);
+-      mc->main_contactor_closed = (uint8_t)(vsm_state >= 2U);
+-      break;
+-  }
++  CAN_Vehicle_MotorStatusFromVsm(vsm_state, &mc->precharge_active, &mc->main_contactor_closed);
+ }
+ 
+ static void CAN_Vehicle_ParseInvStatus(const uint8_t *data, uint8_t dlc)
+diff --git a/device/tests/make_and_run.sh b/device/tests/make_and_run.sh
+index 55827a9..b582b3a 100644
+--- a/device/tests/make_and_run.sh
++++ b/device/tests/make_and_run.sh
+@@ -35,3 +35,14 @@ OUT=$(./build/test_uart) || { echo "$OUT"; exit 1; }
+ echo "$OUT" | grep -v '^C_LINE='
+ C_LINE=$(echo "$OUT" | sed -n 's/^C_LINE=//p')
+ python3 test_parser.py "$C_LINE"
++
++# can_vehicle.c 에서 VSM 매핑 함수만 떼어 온다
++python3 - "$SRC/can_vehicle.c" > build/vsm_func.c <<'P'
++import sys
++s = open(sys.argv[1], encoding="utf-8").read()
++i = s.index("static void CAN_Vehicle_MotorStatusFromVsm("); j = s.index("\n}\n", i) + 3
++print(s[i:j])
++P
++gcc -std=c99 -Wall -Wextra -Werror -I build -o build/test_vsm test_vsm.c
++./build/test_vsm
++
+diff --git a/device/tests/test_vsm.c b/device/tests/test_vsm.c
+new file mode 100644
+index 0000000..f1b841d
+--- /dev/null
++++ b/device/tests/test_vsm.c
+@@ -0,0 +1,25 @@
++/* VSM 상태 -> 프리차지 / 메인 접촉기 매핑 시험 (CAN Protocol V5.9 0x0AA Byte0). */
++#include <stdint.h>
++#include <stdio.h>
++#include "vsm_func.c"
++
++int main(void)
++{
++  /* 기대값: {vsm, precharge, contactor} */
++  static const uint8_t want[][3] = {
++    {0, 0, 0}, {1, 1, 0}, {2, 1, 0}, {3, 0, 1}, {4, 0, 1}, {5, 0, 1}, {6, 0, 1},
++    {7, 0, 0}, {14, 0, 0}, {15, 0, 0}, {255, 0, 0},
++  };
++  int fail = 0;
++  for (unsigned i = 0; i < sizeof(want) / sizeof(want[0]); i++) {
++    uint8_t pre = 9, mc = 9;
++    CAN_Vehicle_MotorStatusFromVsm(want[i][0], &pre, &mc);
++    if (pre != want[i][1] || mc != want[i][2]) {
++      printf("FAIL vsm=%u: precharge=%u contactor=%u (want %u %u)\n", want[i][0], pre, mc, want[i][1], want[i][2]);
++      fail = 1;
++    }
++  }
++  /* 초기충전 중(2)에는 절대 '닫힘'이 아니어야 한다 — 2026-08-11 로그 결함의 직접 원인 */
++  printf(fail ? "VSM 매핑 실패\n" : "OK  VSM 매핑 11개 상태 (2 = 초기충전 중은 닫힘 아님)\n");
++  return fail;
++}
+-- 
+2.43.0
+

@@ -1,0 +1,504 @@
+From 46958032e1b3c7145d07a9745b25b0f8925be397 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 20 Nov 2026 21:59:03 +0900
+Subject: [PATCH 1/3] =?UTF-8?q?UART=20=ED=95=9C=20=EC=A4=84=20=EC=86=90?=
+ =?UTF-8?q?=EC=83=81=20=EB=A7=89=EA=B8=B0:=20=ED=86=B5=EC=A7=B8=EB=A1=9C?=
+ =?UTF-8?q?=20=EC=93=B0=EA=B8=B0,=20CRC-8,=20=EC=88=98=EC=8B=A0=20?=
+ =?UTF-8?q?=EC=AA=BD=20=EC=97=84=EA=B2=A9=ED=95=9C=20=EA=B2=80=EC=82=AC,?=
+ =?UTF-8?q?=20=EB=B2=84=EB=A6=B0=20=EC=A4=84=20=EC=88=98=20=EB=B3=B4?=
+ =?UTF-8?q?=EA=B3=A0=20(=EC=8B=A4=EC=B0=A8=20=EC=8B=9C=ED=97=98=20?=
+ =?UTF-8?q?=EC=A0=84)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- uart4_tx.c: 버퍼가 차면 줄 앞부분만 넣고 멈추던 것을 한 줄 통째로 넣거나 버리게
+- sensor_uart.c: 줄 끝 *HH (CRC-8, 다항식 0x07), HB 줄에 sensor_uart_overflow·uart4_tx_overflow
+- Uart_stm.py: CRC 검사, errors='ignore' -> 'strict', 칸 수가 안 맞으면 0 채우기/자르기 대신 버림, 버린 이유 세기
+- device/tests: 호스트에서 C·파이썬 시험 15개
+
+근거: afa-telemetry-sql 의 2026-08-11 로그 분석 (한 줄 전체 손상 67행 중 56행이 마지막 칸 can2 = 0,
+손상 행 옆 샘플 누락 37% vs 정상 행 13%)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012squhSFBe6dkyFm4AHTMMv
+---
+ .gitignore                             |  1 +
+ device/ECU_test/Core/Inc/sensor_uart.h |  2 +
+ device/ECU_test/Core/Src/sensor_uart.c | 53 ++++++++++++++++++-
+ device/ECU_test/Core/Src/uart4_tx.c    | 21 ++++----
+ device/raspberry pi 5/Uart_stm.py      | 65 ++++++++++++++++++-----
+ device/tests/README.md                 | 13 +++++
+ device/tests/make_and_run.sh           | 37 ++++++++++++++
+ device/tests/test_parser.py            | 71 ++++++++++++++++++++++++++
+ device/tests/test_uart.c               | 53 +++++++++++++++++++
+ 9 files changed, 293 insertions(+), 23 deletions(-)
+ create mode 100644 device/tests/README.md
+ create mode 100644 device/tests/make_and_run.sh
+ create mode 100644 device/tests/test_parser.py
+ create mode 100644 device/tests/test_uart.c
+
+diff --git a/.gitignore b/.gitignore
+index cf223fd..140ba89 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -58,3 +58,4 @@ fp-info-cache
+ __MACOSX/
+ 
+ .DS_Store
++device/tests/build/
+diff --git a/device/ECU_test/Core/Inc/sensor_uart.h b/device/ECU_test/Core/Inc/sensor_uart.h
+index 420a540..7cbfc8b 100644
+--- a/device/ECU_test/Core/Inc/sensor_uart.h
++++ b/device/ECU_test/Core/Inc/sensor_uart.h
+@@ -78,6 +78,8 @@ extern volatile uint32_t sensor_uart_overflow;
+ 
+ void SensorUart_Init(void);
+ void SensorUart_Process(void);
++uint8_t SensorUart_Crc8(const char *s, int len);
++int SensorUart_AppendCrc(char *line, int len, int cap);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/device/ECU_test/Core/Src/sensor_uart.c b/device/ECU_test/Core/Src/sensor_uart.c
+index 6699ce6..d97cc5b 100644
+--- a/device/ECU_test/Core/Src/sensor_uart.c
++++ b/device/ECU_test/Core/Src/sensor_uart.c
+@@ -425,6 +425,47 @@ static void SensorUart_CaptureSample(void)
+   data_count++;
+ }
+ 
++/* CRC-8 (다항식 0x07, 초기값 0). 줄 끝 '*HH' 로 붙여 수신 쪽이 손상된 줄을 버릴 수 있게 한다 (2026-11 추가).
++ * 라즈베리파이 Uart_stm.py 의 crc8() 과 같은 계산. */
++uint8_t SensorUart_Crc8(const char *s, int len)
++{
++  uint8_t crc = 0U;
++  int i;
++  int b;
++
++  for (i = 0; i < len; i++)
++  {
++    crc ^= (uint8_t)s[i];
++    for (b = 0; b < 8; b++)
++    {
++      if ((crc & 0x80U) != 0U)
++      {
++        crc = (uint8_t)((uint8_t)(crc << 1U) ^ 0x07U);
++      }
++      else
++      {
++        crc = (uint8_t)(crc << 1U);
++      }
++    }
++  }
++  return crc;
++}
++
++/* FormatSample 이 만든 "...\n" 을 "...*HH\n" 으로 바꾼다. 자리가 없으면 0 (보내지 않음). */
++int SensorUart_AppendCrc(char *line, int len, int cap)
++{
++  uint8_t crc;
++
++  if ((len <= 0) || (line[len - 1] != '\n') || (len + 3 >= cap))
++  {
++    return 0;
++  }
++  len--;                                   /* 줄바꿈을 잠시 뺀다 */
++  crc = SensorUart_Crc8(line, len);
++  len += snprintf(&line[len], (size_t)(cap - len), "*%02X\n", (unsigned int)crc);
++  return len;
++}
++
+ static void SensorUart_SendSample(const SensorSample_t *sample)
+ {
+   char line[512];
+@@ -435,6 +476,12 @@ static void SensorUart_SendSample(const SensorSample_t *sample)
+   {
+     return;
+   }
++  len = SensorUart_AppendCrc(line, len, (int)sizeof(line));
++  if (len <= 0)
++  {
++    sensor_uart_overflow++;
++    return;
++  }
+ 
+   if (Uart4Tx_Write((const uint8_t *)line, (uint16_t)len) != 0U)
+   {
+@@ -482,10 +529,12 @@ static void SensorUart_SendHeartbeat(void)
+   len = snprintf(
+       line,
+       sizeof(line),
+-      "HB,%lu,%lu,%u\n",
++      "HB,%lu,%lu,%u,%lu,%lu\n",            /* 뒤 두 칸: 버린 줄 수 (2026-11 추가, 예전엔 세기만 하고 안 보냄) */
+       (unsigned long)HAL_GetTick(),
+       (unsigned long)lws.rx_count,
+-      (unsigned int)lws.cal);
++      (unsigned int)lws.cal,
++      (unsigned long)sensor_uart_overflow,
++      (unsigned long)uart4_tx_overflow);
+   if (len > 0)
+   {
+     (void)Uart4Tx_Write((const uint8_t *)line, (uint16_t)len);
+diff --git a/device/ECU_test/Core/Src/uart4_tx.c b/device/ECU_test/Core/Src/uart4_tx.c
+index bb1ced4..cf24357 100644
+--- a/device/ECU_test/Core/Src/uart4_tx.c
++++ b/device/ECU_test/Core/Src/uart4_tx.c
+@@ -71,18 +71,21 @@ uint8_t Uart4Tx_Write(const uint8_t *data, uint16_t len)
+   }
+ 
+   __disable_irq();
++  /* 한 줄을 통째로 넣거나 통째로 버린다 (2026-11 수정).
++   * 예전에는 버퍼가 차면 줄의 앞부분만 넣고 멈춰서, 줄바꿈 없는 반쪽 줄이 다음 줄과 붙어 전송됐다.
++   * 수신 쪽에서는 칸이 밀린 한 줄 + 빠진 샘플로 보였다 (afa-telemetry-sql 분석, 오후1차 8318행 등).
++   * 링버퍼는 head == tail 을 '빔'으로 쓰므로 실제로 넣을 수 있는 양은 SIZE - 1 - used. */
++  if ((uint32_t)len > (uint32_t)(UART4_TX_RING_SIZE - 1U - Uart4Tx_UsedLocked()))
++  {
++    uart4_tx_overflow++;
++    __enable_irq();
++    Uart4Tx_Kick();
++    return 0U;
++  }
+   for (i = 0U; i < len; i++)
+   {
+-    uint16_t next = Uart4Tx_NextIndex(uart4_tx_head);
+-    if (next == uart4_tx_tail)
+-    {
+-      uart4_tx_overflow++;
+-      __enable_irq();
+-      Uart4Tx_Kick();
+-      return 0U;
+-    }
+     uart4_tx_ring[uart4_tx_head] = data[i];
+-    uart4_tx_head = next;
++    uart4_tx_head = Uart4Tx_NextIndex(uart4_tx_head);
+   }
+   __enable_irq();
+ 
+diff --git a/device/raspberry pi 5/Uart_stm.py b/device/raspberry pi 5/Uart_stm.py
+index 2b67089..beb3228 100644
+--- a/device/raspberry pi 5/Uart_stm.py	
++++ b/device/raspberry pi 5/Uart_stm.py	
+@@ -138,6 +138,7 @@ class UartRxStats:
+         self.raw_lines = 0
+         self.parsed_samples = 0
+         self.parse_errors = 0
++        self.reject_reasons: dict[str, int] = {}     # crc / fields / number / decode
+         self.last_raw_line = ""
+         self.last_bad_line = ""
+ 
+@@ -153,6 +154,7 @@ class UartRxStats:
+                 if line.strip():
+                     self.parse_errors += 1
+                     self.last_bad_line = line[:120]
++                    self.reject_reasons[last_reject_reason] = self.reject_reasons.get(last_reject_reason, 0) + 1
+             else:
+                 self.parsed_samples += 1
+ 
+@@ -168,6 +170,7 @@ class UartRxStats:
+                 "raw_lines": self.raw_lines,
+                 "parsed_samples": self.parsed_samples,
+                 "parse_errors": self.parse_errors,
++                "reject_reasons": dict(self.reject_reasons),
+                 "last_raw_line": self.last_raw_line,
+                 "last_bad_line": self.last_bad_line,
+             }
+@@ -392,31 +395,65 @@ def open_uart_serial(
+     fail(f"UART 열기 실패: {last_exc}")
+ 
+ 
++KNOWN_VALUE_LENGTHS = (len(LEGACY_SENSOR_KEYS), len(SENSOR_KEYS_WITH_TEMP), len(SENSOR_KEYS_WITH_STEERING), len(SENSOR_KEYS))
++last_reject_reason = ""   # 마지막으로 버린 줄의 이유 (통계용)
++
++
++def crc8(text: str) -> int:
++    """STM32 sensor_uart.c 의 SensorUart_Crc8 과 같은 CRC-8 (다항식 0x07, 초기값 0)."""
++    crc = 0
++    for ch in text.encode("ascii"):
++        crc ^= ch
++        for _ in range(8):
++            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
++    return crc
++
++
+ def parse_line(line: str) -> dict[str, Any] | None:
+-    """UART 한 줄을 센서 샘플 dict 로 변환."""
+-    parts = [p.strip() for p in line.strip().split(",")]
++    """UART 한 줄을 센서 샘플 dict 로 변환. 손상된 줄은 None (2026-11 수정).
++
++    예전에는 칸 수가 모자라면 '0'으로 채우고 남으면 잘라서, 두 줄이 붙거나 칸이 빠진 줄도 샘플로 저장됐다
++    (afa-telemetry-sql 분석: 한 줄 전체 손상 67행 중 56행이 마지막 칸 can2 = 0). 지금은:
++      - 줄 끝 '*HH' (CRC-8) 가 있으면 검사하고, 틀리면 버린다. 없는 줄(예전 펌웨어)은 칸 수 검사만.
++      - 칸 수는 알려진 형식(예전 펌웨어 포함) 중 하나와 정확히 같아야 한다. 예전 형식만 뒤 칸을 '0'으로 채운다.
++    """
++    global last_reject_reason
++    text = line.strip()
++    if len(text) > 3 and text[-3] == "*":
++        body, given = text[:-3], text[-2:]
++        try:
++            ok = int(given, 16) == crc8(body)
++        except (ValueError, UnicodeEncodeError):
++            ok = False
++        if not ok:
++            last_reject_reason = "crc"
++            return None
++        text = body
++    parts = [p.strip() for p in text.split(",")]
+     if len(parts) < len(LEGACY_SENSOR_KEYS):
++        last_reject_reason = "fields"
+         return None
+ 
++    # 첫 칸이 MCU 시각인지는 칸 수가 아니라 모양으로 판단한다. 시각은 정수(%lu), 첫 센서 값 FR 은 항상 소수점이 있다(%ld.%02ld).
++    # 칸 수로 판단하면 칸 하나가 빠진 줄이 '시각 없는 예전 형식'과 칸 수가 같아져 그대로 받아들여진다.
+     stm_ms: int | None = None
+     values: list[str]
+-    if len(parts) >= len(LEGACY_SENSOR_KEYS) + 1:
+-        try:
+-            stm_ms = int(float(parts[0]))
+-            values = parts[1:]
+-        except ValueError:
+-            values = parts
++    if parts[0].isdigit():
++        stm_ms = int(parts[0])
++        values = parts[1:]
+     else:
+         values = parts
++    if len(values) not in KNOWN_VALUE_LENGTHS:
++        last_reject_reason = "fields"       # 칸이 빠지거나 두 줄이 붙은 줄: 채우거나 자르지 않고 버림
++        return None
+ 
+     if len(values) < len(SENSOR_KEYS):
+-        values = [*values, *("0",) * (len(SENSOR_KEYS) - len(values))]
+-    elif len(values) > len(SENSOR_KEYS):
+-        values = values[: len(SENSOR_KEYS)]
++        values = [*values, *("0",) * (len(SENSOR_KEYS) - len(values))]   # 예전 펌웨어 형식만 여기에 옴
+ 
+     try:
+         nums = [float(v) for v in values]
+     except ValueError:
++        last_reject_reason = "number"
+         return None
+ 
+     sample: dict[str, Any] = {
+@@ -476,6 +513,7 @@ def read_loop(
+     ser: serial.Serial,
+     stop_event: threading.Event,
+ ) -> None:
++    global last_reject_reason
+     while not stop_event.is_set():
+         try:
+             raw = ser.readline()
+@@ -486,8 +524,11 @@ def read_loop(
+             continue
+         uart_stats.on_bytes(len(raw))
+         try:
+-            line = raw.decode("ascii", errors="ignore")
++            # errors="ignore" 였을 때는 깨진 바이트가 조용히 지워져 숫자 한 글자가 빠진 값(44.4 -> 4.4)으로 저장됐다 (2026-11 수정)
++            line = raw.decode("ascii", errors="strict")
+         except UnicodeDecodeError:
++            last_reject_reason = "decode"
++            uart_stats.on_line(raw.decode("ascii", errors="replace"), None)
+             continue
+         if is_boot_line(line):
+             uart_stats.on_boot_line(line)
+diff --git a/device/tests/README.md b/device/tests/README.md
+new file mode 100644
+index 0000000..1aa4dce
+--- /dev/null
++++ b/device/tests/README.md
+@@ -0,0 +1,13 @@
++# UART 전송 시험 (컴퓨터에서)
++
++```bash
++bash device/tests/make_and_run.sh
++```
++
++STM32 HAL을 흉내 낸 것으로 바꿔 끼우고 `uart4_tx.c`(전송 버퍼)와 `sensor_uart.c`의 CRC 함수, 라즈베리파이 `Uart_stm.py`의 `parse_line`을 시험한다.
++실차·실제 UART 시험은 아니다. 고친 이유와 근거는 afa-telemetry-sql 분석 (2026-08-11 로그, 규칙 v2) 참고:
++
++- 버퍼가 차면 줄 앞부분만 넣고 멈춰, 반쪽 줄이 다음 줄과 붙었다 → 한 줄을 통째로 넣거나 버림
++- 줄에 검사값이 없어 손상된 줄을 알아낼 수 없었다 → 줄 끝 `*HH` (CRC-8)
++- 수신 쪽이 깨진 바이트를 지우고(`errors="ignore"`), 칸 수가 안 맞으면 0으로 채우거나 잘라서 저장했다 → 버리고 이유를 센다
++- 버린 줄 수를 세기만 하고 보내지 않았다 → HB 줄 뒤에 두 칸 추가
+diff --git a/device/tests/make_and_run.sh b/device/tests/make_and_run.sh
+new file mode 100644
+index 0000000..b1dfb73
+--- /dev/null
++++ b/device/tests/make_and_run.sh
+@@ -0,0 +1,37 @@
++#!/usr/bin/env bash
++# 컴퓨터(호스트)에서 UART 전송 코드를 시험한다. STM32 HAL은 흉내 낸 것(stub)으로 바꿔 끼운다.
++# 사용: bash device/tests/make_and_run.sh
++set -e
++cd "$(dirname "$0")"
++SRC=../ECU_test/Core/Src
++INC=../ECU_test/Core/Inc
++mkdir -p build/stub
++cat > build/stub/usart.h <<'H'
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++typedef struct { void *Instance; } UART_HandleTypeDef;
++#define UART4 ((void *)4)
++#define HAL_OK 0
++extern UART_HandleTypeDef huart4;
++int HAL_UART_Transmit_DMA(UART_HandleTypeDef *h, uint8_t *d, uint16_t n);
++int HAL_UART_AbortTransmit(UART_HandleTypeDef *h);
++static inline void __disable_irq(void) {}
++static inline void __enable_irq(void) {}
++H
++# sensor_uart.c 에서 CRC 두 함수만 떼어 온다 (나머지는 하드웨어 의존)
++python3 - "$SRC/sensor_uart.c" > build/crc_funcs.c <<'P'
++import re, sys
++s = open(sys.argv[1], encoding="utf-8").read()
++out = ["#include <stdio.h>", "#include <stdint.h>"]
++for name in ("uint8_t SensorUart_Crc8(", "int SensorUart_AppendCrc("):
++    i = s.index(name); j = s.index("\n}\n", i) + 3
++    out.append(s[i:j])
++print("\n".join(out))
++P
++gcc -std=c99 -Wall -Wextra -Werror -I build/stub -I "$INC" -o build/test_uart \
++    test_uart.c "$SRC/uart4_tx.c" build/crc_funcs.c
++OUT=$(./build/test_uart) || { echo "$OUT"; exit 1; }
++echo "$OUT" | grep -v '^C_LINE='
++C_LINE=$(echo "$OUT" | sed -n 's/^C_LINE=//p')
++python3 test_parser.py "$C_LINE"
+diff --git a/device/tests/test_parser.py b/device/tests/test_parser.py
+new file mode 100644
+index 0000000..41d6fc1
+--- /dev/null
++++ b/device/tests/test_parser.py
+@@ -0,0 +1,71 @@
++"""라즈베리파이 Uart_stm.py 의 parse_line 시험. 실제 로그에서 본 손상 모양을 그대로 넣어 본다 (afa-telemetry-sql 분석).
++사용: python3 device/tests/test_parser.py  (make_and_run.sh 가 C 시험 뒤에 부름)"""
++import importlib.util
++import sys
++import types
++from pathlib import Path
++
++# pyserial 없이 import (이 시험은 시리얼 포트를 열지 않는다)
++if "serial" not in sys.modules:
++    try:
++        import serial  # noqa: F401
++    except ImportError:
++        fake = types.ModuleType("serial")
++        fake.Serial, fake.SerialException = None, Exception
++        fake.tools = types.ModuleType("serial.tools")
++        fake.tools.list_ports = types.ModuleType("serial.tools.list_ports")
++        sys.modules.update({"serial": fake, "serial.tools": fake.tools, "serial.tools.list_ports": fake.tools.list_ports})
++spec = importlib.util.spec_from_file_location("uart_stm", Path(__file__).parent.parent / "raspberry pi 5" / "Uart_stm.py")
++u = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(u)
++
++fails = 0
++
++
++def check(cond, msg):
++    global fails
++    print(("통과 " if cond else "실패 ") + msg)
++    fails += not cond
++
++
++n = len(u.SENSOR_KEYS)
++vals = [f"{i + 0.5:.1f}" for i in range(n)]
++good = "342412," + ",".join(vals)
++with_crc = f"{good}*{u.crc8(good):02X}"
++
++s = u.parse_line(with_crc + "\n")
++check(s is not None and s["stm_ms"] == 342412 and s[u.SENSOR_KEYS[-1]] == float(vals[-1]), "CRC 맞는 줄은 값 그대로")
++check(u.parse_line(good + "\n") is not None, "CRC 없는 줄(예전 펌웨어)도 칸 수가 맞으면 받음")
++
++# 실제 로그에서 본 손상 1: 숫자 한 글자가 빠짐 (44.4 -> 4.4). CRC가 있으면 잡힌다
++bad = with_crc.replace(",5.5,", ",.5,", 1)
++check(u.parse_line(bad) is None and u.last_reject_reason == "crc", "숫자 한 글자가 빠진 줄은 CRC로 버림")
++
++# 손상 2: 칸 하나가 빠짐 -> 예전엔 끝을 '0'으로 채워 저장 (그래서 can2 = 0)
++missing = "342412," + ",".join(vals[:5] + vals[6:])
++check(u.parse_line(missing) is None and u.last_reject_reason == "fields", "칸이 하나 빠진 줄은 0으로 채우지 않고 버림")
++
++# 손상 3: 버퍼가 차서 반쪽 줄 + 다음 줄이 붙음 -> 예전엔 잘라서 저장
++merged = "342412," + ",".join(vals[:20]) + "342422," + ",".join(vals)
++check(u.parse_line(merged) is None, "두 줄이 붙은 줄은 자르지 않고 버림")
++
++# 예전 펌웨어 형식(칸 수가 정해진 짧은 형식)은 그대로 받는다
++legacy = "342412," + ",".join(vals[: len(u.LEGACY_SENSOR_KEYS)])
++s = u.parse_line(legacy)
++check(s is not None and s[u.SENSOR_KEYS[-1]] == 0.0, "예전 펌웨어 짧은 형식은 받고 뒤를 0으로 채움 (전과 같음)")
++
++# C 쪽과 같은 CRC
++check(u.crc8("123456789") == 0xF4, "CRC-8 표준 검사값 123456789 -> F4")
++if len(sys.argv) > 1:                                   # make_and_run.sh 가 C 시험이 만든 줄을 넘겨줌
++    c_line = sys.argv[1]
++    check(u.parse_line(c_line) is not None or u.last_reject_reason != "crc",
++          f"C가 만든 줄의 CRC를 파이썬이 같은 값으로 검사 ({c_line.strip()})")
++
++# 깨진 바이트는 조용히 지우지 않는다
++try:
++    b"342412,4\xb4.4".decode("ascii", errors="strict")
++    check(False, "깨진 바이트 거절")
++except UnicodeDecodeError:
++    check(True, "깨진 바이트(0x80 이상)가 든 줄은 디코드 단계에서 거절 (예전 errors='ignore'는 지워서 44.4 -> 4.4)")
++
++sys.exit(1 if fails else 0)
+diff --git a/device/tests/test_uart.c b/device/tests/test_uart.c
+new file mode 100644
+index 0000000..ee31bb9
+--- /dev/null
++++ b/device/tests/test_uart.c
+@@ -0,0 +1,53 @@
++/* UART 전송 코드 시험 (호스트에서). make_and_run.sh 가 컴파일한다. */
++#include <stdio.h>
++#include <string.h>
++#include "usart.h"
++#include "uart4_tx.h"
++
++uint8_t SensorUart_Crc8(const char *s, int len);
++int SensorUart_AppendCrc(char *line, int len, int cap);
++
++UART_HandleTypeDef huart4 = { UART4 };
++static int dma_calls = 0;
++int HAL_UART_Transmit_DMA(UART_HandleTypeDef *h, uint8_t *d, uint16_t n) { (void)h; (void)d; (void)n; dma_calls++; return HAL_OK; }
++int HAL_UART_AbortTransmit(UART_HandleTypeDef *h) { (void)h; return HAL_OK; }
++
++static int fails = 0;
++#define CHECK(cond, msg) do { if (cond) printf("통과 %s\n", msg); else { printf("실패 %s\n", msg); fails++; } } while (0)
++
++int main(void)
++{
++    char line[64];
++    uint8_t chunk[600];
++    int i;
++
++    /* 1. 버퍼가 차 있으면 줄을 통째로 버린다 (반쪽 줄을 넣지 않는다).
++     *    DMA 완료 콜백을 부르지 않으므로 보낸 바이트가 버퍼에서 안 빠진다 = 가득 찬 상태를 만들 수 있다. */
++    Uart4Tx_Init();
++    memset(chunk, 'x', sizeof(chunk));
++    for (i = 0; i < 7; i++) Uart4Tx_Write(chunk, 512);           /* 3584 바이트 */
++    uint16_t before = Uart4Tx_Pending();
++    uint32_t ov_before = uart4_tx_overflow;
++    uint8_t ok = Uart4Tx_Write(chunk, 600);                       /* 남은 자리 511보다 큼 */
++    CHECK(ok == 0U && Uart4Tx_Pending() == before && uart4_tx_overflow == ov_before + 1U,
++          "버퍼보다 긴 줄은 한 바이트도 넣지 않고 버리고, 버린 수를 센다");
++    ok = Uart4Tx_Write(chunk, 511);
++    CHECK(ok == 1U && Uart4Tx_Pending() == before + 511U, "딱 맞는 줄(남은 자리 511)은 들어간다");
++    ok = Uart4Tx_Write(chunk, 1);
++    CHECK(ok == 0U && Uart4Tx_Pending() == 4095U, "가득 차면 1바이트도 안 들어간다 (head==tail 은 '빔'이라 4095가 최대)");
++
++    /* 2. CRC: 알려진 값 (CRC-8/SMBUS, '123456789' -> 0xF4) */
++    CHECK(SensorUart_Crc8("123456789", 9) == 0xF4, "CRC-8 표준 검사값 123456789 -> F4");
++
++    /* 3. 줄 끝에 *HH 붙이기 */
++    strcpy(line, "342412,8.82,-1.49\n");
++    int n = SensorUart_AppendCrc(line, (int)strlen(line), (int)sizeof(line));
++    char want[16];
++    snprintf(want, sizeof(want), "*%02X\n", SensorUart_Crc8("342412,8.82,-1.49", 17));
++    CHECK(n == (int)strlen(line) && strcmp(line + n - 4, want) == 0, "줄 끝이 '*HH\\n' 형식");
++    printf("C_LINE=%s", line);                                    /* 파이썬 시험이 같은 CRC를 내는지 비교 */
++    strcpy(line, "no newline");
++    CHECK(SensorUart_AppendCrc(line, 10, (int)sizeof(line)) == 0, "줄바꿈 없는 줄은 보내지 않음");
++
++    return fails ? 1 : 0;
++}
+-- 
+2.43.0
+
