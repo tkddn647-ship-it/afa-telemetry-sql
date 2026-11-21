@@ -9,7 +9,9 @@ CREATE TABLE session (
     file_name   TEXT NOT NULL UNIQUE,
     label       TEXT NOT NULL,          -- 예: 오후1차
     log_date    TEXT NOT NULL,          -- YYYY-MM-DD
-    row_count   INTEGER NOT NULL
+    row_count   INTEGER NOT NULL,
+    format      TEXT NOT NULL DEFAULT 'v1_mcu',   -- rules/formats.csv 의 형식 (2026-11-21)
+    has_clock   INTEGER NOT NULL DEFAULT 1        -- MCU 시각이 있으면 1. 0 이면 누락·시각·재시작 검사는 해당 없음(NULL)
 );
 
 -- 원본 한 행 = 샘플 하나 (MCU가 약 10 ms마다 보냄)

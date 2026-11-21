@@ -1,4 +1,4 @@
--- 샘플 누락의 구조 (2026-11-21). sql/06 과 같은 간격 계산을 두 갈래로 나눈다.
+-- 샘플 누락의 구조 (2026-11-21). MCU 시각이 없는 형식은 모두 NULL. sql/06 과 같은 간격 계산을 두 갈래로 나눈다.
 --   주기 누락: 앞 행과 18~19 ms 떨어진 간격 하나 = 1개 (그 다음 간격은 11 ms). 모든 세션에서 약 200 ms(19~20행)마다 한 번 생기고,
 --             ECU 온도 갱신(200 ms 주기)과 시각이 묶여 있다 (온도가 바뀐 행의 87.5%가 직전 19 ms 간격에서 181 ms 뒤).
 --             차가 서 있어도 생기므로 통신 문제가 아니라 MCU 루프 일정 문제로 본다 (추정, 정확한 순서는 모름).
@@ -31,10 +31,10 @@ broken AS (
     SELECT session_id, SUM(bad_ms OR bad_inv OR bad_bms OR bad_speed OR bad_value) AS b FROM sample_flags GROUP BY session_id
 )
 SELECT se.label AS 세션,
-       a.per AS 주기_누락,
-       ROUND(100.0 * a.per / (se.row_count + a.lost), 2) AS 주기_누락_pct,
-       a.lost - a.per AS 그밖_누락,
-       ROUND(100.0 * (a.lost - a.per) / (se.row_count + a.lost), 2) AS 그밖_누락_pct,
-       ROUND(1.0 * b.b / NULLIF(a.lost - a.per, 0), 3) AS 결합비
+       CASE WHEN se.has_clock THEN a.per END AS 주기_누락,
+       CASE WHEN se.has_clock THEN ROUND(100.0 * a.per / (se.row_count + a.lost), 2) END AS 주기_누락_pct,
+       CASE WHEN se.has_clock THEN a.lost - a.per END AS 그밖_누락,
+       CASE WHEN se.has_clock THEN ROUND(100.0 * (a.lost - a.per) / (se.row_count + a.lost), 2) END AS 그밖_누락_pct,
+       CASE WHEN se.has_clock THEN ROUND(1.0 * b.b / NULLIF(a.lost - a.per, 0), 3) END AS 결합비
 FROM session se JOIN agg a USING (session_id) JOIN broken b USING (session_id)
 ORDER BY se.session_id;

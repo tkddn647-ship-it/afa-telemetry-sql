@@ -56,17 +56,25 @@ def poisson_cdf(k: int, lam: float) -> float:
 
 def sessions(con: sqlite3.Connection, metrics: dict) -> list[dict]:
     """시작 시각 순서. 각 항목: label, log_date, start, 지표들."""
-    rows = con.execute("""SELECT se.label, se.log_date, MIN(s.ts_utc) FROM session se JOIN sample s USING (session_id)
+    db.migrate(con) if not con.execute("PRAGMA query_only").fetchone()[0] else None
+    cols = {r[1] for r in con.execute("PRAGMA table_info(session)")}
+    fmt = "se.format" if "format" in cols else "'v1_mcu'"
+    rows = con.execute(f"""SELECT se.label, se.log_date, MIN(s.ts_utc), {fmt} FROM session se JOIN sample s USING (session_id)
                           GROUP BY se.session_id ORDER BY se.log_date, MIN(s.ts_utc)""").fetchall()
-    return [{"label": l, "log_date": d, "start": t, **metrics.get(l, {})} for l, d, t in rows]
+    return [{"label": l, "log_date": d, "start": t, "format": f, **metrics.get(l, {})} for l, d, t, f in rows]
 
 
 def judge(target: dict, base: list[dict]) -> list[dict]:
     """target 세션을 base 세션들과 비교. 결과 = 지표마다 {metric, value, baseline, verdict, detail}."""
     out = []
-    base = [b for b in base if b["label"] != target["label"]]
+    # 같은 형식끼리만 비교 (형식이 다르면 펌웨어·로거가 달라 지표의 뜻이 다름, 2026-11-21)
+    base = [b for b in base if b["label"] != target["label"] and b.get("format", "v1_mcu") == target.get("format", "v1_mcu")]
     for r in rules():
         metric = r["metric"]
+        if r["method"] == "poisson" and target.get("그밖_누락") is None:
+            out.append({"metric": metric, "value": None, "baseline": None, "verdict": "해당 없음",
+                        "detail": "MCU 시각이 없는 형식이라 누락을 셀 수 없음"})
+            continue
         if r["method"] == "poisson":
             n, k = target.get("그밖_누락") or 0, target.get("깨진_행") or 0
             pool = [b for b in base if (b.get("그밖_누락") or 0) >= 20]
@@ -144,7 +152,7 @@ def main() -> None:
     n_alert = 0
     for s in ss:
         for j in judge(s, base):
-            alert = j["verdict"] not in ("같음", "판정 불가", "기준 부족")
+            alert = j["verdict"] not in ("같음", "판정 불가", "기준 부족", "해당 없음")
             n_alert += alert
             lines.append(f"| {s['label']} | {j['metric']} | {j['value']} | {j['baseline']} | {'**' + j['verdict'] + '**' if alert else j['verdict']} | {j['detail']} |")
     lines.insert(2, f"알림 {n_alert}개.\n")

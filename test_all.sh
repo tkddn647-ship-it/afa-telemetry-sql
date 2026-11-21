@@ -25,3 +25,4 @@ python3 eval_cross.py | grep '^맞음'   # 여러 신호 검사 (REQ-14~16) 시�
 python3 history.py | grep '^알림'      # 세션별 변화 판정 (기준 세션끼리 비교)
 python3 eval_history.py | grep '맞음' # 변화 판정 시험 (약 3분)
 python3 eval_digit.py | grep '^| 합계'  # 숫자 글자 검사 시험
+python3 test_formats.py | tail -1   # 로그 형식 대응 (가짜 데이터)

@@ -110,7 +110,7 @@ def main() -> None:
         for name, v in variants(df, rng).items():
             s = metrics_of(v, label)
             js = history.judge(s, base)
-            alerts = [j for j in js if j["verdict"] not in ("같음", "판정 불가", "기준 부족")]
+            alerts = [j for j in js if j["verdict"] not in ("같음", "판정 불가", "기준 부족", "해당 없음")]
             metric, want = WANT[name]
             if want is None:
                 good = not alerts

@@ -4,3 +4,5 @@ faulted/
 synthetic/
 *.db
 __pycache__/
+inbox_v0/
+reports_v0/

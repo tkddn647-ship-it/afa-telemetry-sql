@@ -102,6 +102,54 @@ def refresh_flags(con: sqlite3.Connection, session_ids: list[int] | None = None)
     con.executescript((ROOT / "sql" / "01_flags.sql").read_text(encoding="utf-8"))
 
 
+FORMATS_CSV = ROOT / "rules" / "formats.csv"
+
+
+def formats() -> dict[str, dict]:
+    """rules/formats.csv -> {형식: {"detect": 머리줄에 있으면 이 형식인 열, "clock": 시계 열 또는 "", "map": {표준 열: 원본 열 또는 ""}}}.
+    표에 없는 표준 열은 원본에서 같은 이름(대소문자 무시)을 찾는다. 원본 열이 "" 이면 그 형식엔 없는 신호 -> NULL."""
+    out: dict[str, dict] = {}
+    with open(FORMATS_CSV, encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            f = out.setdefault(r["format"], {"detect": None, "clock": None, "map": {}})
+            if r["canonical"] == "_detect":
+                f["detect"] = r["source"]
+            elif r["canonical"] == "_clock":
+                f["clock"] = r["source"]
+            else:
+                f["map"][r["canonical"].lower()] = r["source"]
+    return out
+
+
+def detect_format(header: list[str]) -> str:
+    """머리줄로 형식을 고른다 (formats.csv 의 순서대로 처음 맞는 것). 모르는 형식이면 어떤 열이 있었는지 알려 주고 멈춘다."""
+    have = {h.strip().lower() for h in header}
+    for name, f in formats().items():
+        if f["detect"] and f["detect"].lower() in have:
+            return name
+    raise ValueError(f"모르는 로그 형식: 머리줄 {header[:8]}... — rules/formats.csv 에 형식을 추가하세요")
+
+
+def silent_columns(con: sqlite3.Connection) -> dict[str, list[str]]:
+    """세션 -> 세션 내내 NULL 이거나 0 인 신호 (기록 안 됐거나 연결 안 된 신호). 7월 로그는 인버터·BMS 가 전부 0."""
+    cols = [c.lower() for c in COLUMNS if c != "stm_ms"]
+    expr = ", ".join(f"SUM({c} IS NOT NULL AND {c} != 0)" for c in cols)
+    out = {}
+    for row in con.execute(f"SELECT se.label, {expr} FROM sample s JOIN session se USING (session_id) GROUP BY se.session_id"):
+        out[row[0]] = [c for c, n in zip(cols, row[1:]) if not n]
+    return out
+
+
+def migrate(con: sqlite3.Connection) -> None:
+    """예전 DB의 session 표에 형식 열을 더한다 (2026-11-21). 예전 세션은 모두 v1_mcu."""
+    have = {r[1] for r in con.execute("PRAGMA table_info(session)")}
+    if "format" not in have:
+        con.execute("ALTER TABLE session ADD COLUMN format TEXT NOT NULL DEFAULT 'v1_mcu'")
+    if "has_clock" not in have:
+        con.execute("ALTER TABLE session ADD COLUMN has_clock INTEGER NOT NULL DEFAULT 1")
+    con.commit()
+
+
 def label_of(path: Path) -> str:
     m = re.search(r"sensor_log_\d{8}_(.+?)\.csv", path.name)
     return m.group(1) if m else path.stem
@@ -128,26 +176,48 @@ def load_file(con: sqlite3.Connection, path: Path) -> tuple[int | None, int]:
     digest = sha256_of(path)
     if con.execute("SELECT 1 FROM ingest_log WHERE sha256 = ?", (digest,)).fetchone():
         return None, 0
+    migrate(con)
     table_cols = ["session_id", "row_no", "ts_utc"] + [c.lower() for c in COLUMNS]
     insert = f"INSERT INTO sample ({','.join(table_cols)}) VALUES ({','.join('?' * len(table_cols))})"
     opener = gzip.open if path.suffix == ".gz" else open
     rows, issues = [], []
     sid = (con.execute("SELECT COALESCE(MAX(session_id), 0) + 1 FROM session").fetchone()[0])
     with opener(path, "rt", encoding="utf-8", newline="") as fh:
-        for row_no, rec in enumerate(csv.DictReader(fh), start=1):
+        reader = csv.DictReader(fh)
+        fmt = detect_format(reader.fieldnames or [])
+        spec = formats()[fmt]
+        lower = {h.strip().lower(): h for h in reader.fieldnames}
+        src = {}                                               # 표준 열 -> 원본 머리줄 이름 (없으면 None)
+        for col in COLUMNS:
+            name = spec["map"].get(col.lower(), col)
+            src[col] = lower.get(name.lower()) if name else None
+        for row_no, rec in enumerate(reader, start=1):
             vals = [sid, row_no, rec.get("timestamp") or None]
             for col in COLUMNS:
-                v, bad = _convert(col, rec.get(col, "") or "")
+                raw = rec.get(src[col], "") if src[col] else ""
+                v, bad = _convert(col, raw or "")
                 if bad:
-                    issues.append((sid, row_no, col.lower(), rec[col]))
+                    issues.append((sid, row_no, col.lower(), raw))
                 vals.append(v)
             rows.append(vals)
     m = re.search(r"(\d{4})(\d{2})(\d{2})", path.name)
-    date = "-".join(m.groups()) if m else None
+    first_ts = rows[0][2] if rows else None
+    if m:
+        date = "-".join(m.groups())
+    elif first_ts and re.match(r"\d{4}[/-]\d{2}[/-]\d{2}", first_ts):
+        date = first_ts[:10].replace("/", "-")                 # 파일 이름에 날짜가 없으면 첫 행의 시각에서
+    else:
+        date = None
+    label = label_of(path)
+    if not re.search(r"sensor_log_\d{8}_", path.name) and first_ts:   # data.csv 처럼 이름으로 구분이 안 되는 파일
+        label = f"{date}_{first_ts[11:19].replace(':', '')}" if date else label
+    has_clock = 1 if spec["clock"] else 0
+    stored_name = path.name if re.search(r"\d{8}", path.name) else f"{path.parent.name}/{path.name}"   # data.csv 가 여러 폴더에 있을 수 있음
     with con:
-        con.execute("INSERT INTO session VALUES (?,?,?,?,?)", (sid, path.name, label_of(path), date, len(rows)))
+        con.execute("INSERT INTO session (session_id, file_name, label, log_date, row_count, format, has_clock) VALUES (?,?,?,?,?,?,?)",
+                    (sid, stored_name, label, date, len(rows), fmt, has_clock))
         con.executemany(insert, rows)
         con.executemany("INSERT INTO load_issue VALUES (?,?,?,?)", issues)
         con.execute("INSERT INTO ingest_log VALUES (?,?,?,?)",
-                    (digest, path.name, sid, datetime.now().isoformat(timespec="seconds")))
+                    (digest, stored_name, sid, datetime.now().isoformat(timespec="seconds")))
     return sid, len(rows)

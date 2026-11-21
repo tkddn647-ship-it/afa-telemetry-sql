@@ -1,0 +1,41 @@
+format,canonical,source,note
+v1_mcu,_detect,stm_ms,2026-08 이후 라즈베리파이 Uart_stm.py 가 쓴 형식. MCU 시각(stm_ms) 있음. 표준 열과 이름이 같아 대응을 적지 않음
+v1_mcu,_clock,stm_ms,누락·시각 검사에 쓰는 시계
+v0_udp,_detect,monotonic_ns,2026-07 UDP 로거(server/udp_logger) 형식. 53열. MCU 시각 없음
+v0_udp,_clock,,수신 시각(monotonic_ns)은 묶음으로 찍혀(간격 중앙값 0.05 ms) 샘플 간격으로 못 씀 -> 누락·시각·재시작 검사 해당 없음
+v0_udp,stm_ms,,
+v0_udp,fl,linear_fl,서스펜션 변위로 보이나 영점·크기가 다름 (정지 중 약 40). 같은 센서·단위인지 확인 필요
+v0_udp,fr,linear_fr,위와 같음
+v0_udp,rl,linear_rl,위와 같음
+v0_udp,rr,linear_rr,위와 같음
+v0_udp,x_g,accelX,정지 중 accelZ 약 1.0 이라 단위 g 로 봄
+v0_udp,y_g,accelY,
+v0_udp,z_g,accelZ,
+v0_udp,ecu_temp,ECU_temp,
+v0_udp,steering_angle,steering_angle,
+v0_udp,steering_speed,steering_speed,
+v0_udp,inv_temp_igt,INV_TEMP_IGT,
+v0_udp,inv_temp_motor,INV_TEMP_motor,
+v0_udp,inv_motor_speed,INV_moter_speed,원본 철자 그대로 (moter)
+v0_udp,vehicle_speed_kmh,speed,단위 표시 없음. km/h 로 봄 (확인 필요)
+v0_udp,inv_dc_current,INV_dc_currnet,원본 철자 그대로 (currnet)
+v0_udp,inv_voltage,INV_voltage,
+v0_udp,motor_precharge,,이 형식엔 없음
+v0_udp,motor_main_contactor,,이 형식엔 없음
+v0_udp,motor_inverter_mode,,이 형식엔 없음
+v0_udp,INV_shudder_torque,,이 형식엔 없음
+v0_udp,INV_id_feedback,INV_id_feedback,
+v0_udp,INV_iq_feedback,INV_iq_feedback,
+v0_udp,INV_torque_commanded,INV_torque_commanded,
+v0_udp,INV_torque_feedback,INV_torque_feedback,
+v0_udp,INV_id_command,,이 형식엔 없음
+v0_udp,INV_iq_command,,이 형식엔 없음
+v0_udp,bms_charge,BMS_charge,
+v0_udp,bms_voltage,BMS_voltage,
+v0_udp,bms_current,BMS_current,
+v0_udp,bms_ccl,BMS_ccl,
+v0_udp,bms_dcl,BMS_dcl,
+v0_udp,bms_temp_maxvalue,BMS_TEMP_maxvalue,
+v0_udp,bms_capacity,BMS_capacity,
+v0_udp,can1,,이 형식엔 없음
+v0_udp,can2,,이 형식엔 없음

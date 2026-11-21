@@ -87,6 +87,8 @@ def t_precharge(con, s, m):
 
 def t_current_match(con, s, m):
     n, L = m.get("전류_불일치"), m.get("불일치_최장_행")
+    if n is None:                       # 인버터·팩 전류가 세션 내내 0 = 부하가 없어 시험이 안 된 것 (pipeline.REQUIRES)
+        return None, None, ""
     q = ("WITH m AS (SELECT row_no, row_no - ROW_NUMBER() OVER (ORDER BY row_no) g FROM sample_clean JOIN session USING (session_id) "
          f"WHERE label = '{s}' AND inv_dc_current > 25 AND bms_current <= 0.5) "
          "SELECT MIN(row_no) AS 시작_행, COUNT(*) AS 행_수 FROM m GROUP BY g HAVING COUNT(*) >= 10;")
@@ -95,6 +97,8 @@ def t_current_match(con, s, m):
 
 def t_open_current(con, s, m):
     v = m.get("열림중_전류_행")
+    if v is None:
+        return None, None, ""
     q = (f"SELECT row_no, motor_main_contactor, inv_dc_current FROM sample_clean JOIN session USING (session_id) "
          f"WHERE label = '{s}' AND motor_main_contactor = 0 AND ABS(inv_dc_current) > 5;")
     return f"{v}행", v == 0, q
@@ -177,7 +181,7 @@ def main() -> None:
         lines.append(f"| **{r['id']}** {r['title']} | {r['criterion']} | {v} | {mark(p)} | `{how}` |")
         if not p:
             defects.append((r, "시스템", v, how))
-    lines.insert(2, f"판정 {sum(summary.values())}칸: 통과 {summary['통과']} · 실패 {summary['실패']} · 해당 없음 {summary['해당 없음']} (부하가 없는 세션)\n")
+    lines.insert(2, f"판정 {sum(summary.values())}칸: 통과 {summary['통과']} · 실패 {summary['실패']} · 해당 없음 {summary['해당 없음']} (부하가 없거나 필요한 신호가 기록 안 된 세션)\n")
     (ROOT / "reports" / "traceability.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     known = {"REQ-05": "원인 규명: BMS 전류 CAN 신호의 스케일 계수 누락. 조치: 보정 계수 1.25 (REQ-06에서 확인).",

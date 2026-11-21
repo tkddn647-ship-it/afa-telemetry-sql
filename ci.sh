@@ -8,3 +8,4 @@ python load.py synthetic/*.csv.gz
 python run.py --out /tmp/ci_results.md
 python eval_detection.py --src synthetic --seeds 2 > /dev/null
 python ci_check.py
+python test_formats.py
