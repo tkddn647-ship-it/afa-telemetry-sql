@@ -1,0 +1,9 @@
+# Python 3.11 이상 (시험한 환경: Python 3.13, 아래 괄호 안 버전). DB는 내장 sqlite3.
+pandas       # 3.0.5
+numpy        # 2.5.3
+matplotlib   # 3.11.2, make_figures.py
+PyYAML       # 6.0.3, trace.py (requirements.yaml)
+# 아래는 일부 스크립트만 (필요하면 설치)
+# scikit-learn  # 1.9.1, eval_models.py (Isolation Forest 비교)
+# mcp           # 2.3.0, mcp_server.py
+# ask.py · agent.py · eval_ai_sql.py · eval_agent_blind.py 는 Claude Code CLI(claude)가 필요

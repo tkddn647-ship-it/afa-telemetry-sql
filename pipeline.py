@@ -68,6 +68,8 @@ def write_report(out_dir: Path, label: str, info: tuple, m: dict, warns: list[st
         f"# 세션 보고서: {label}\n",
         f"- 파일: `{file_name}`",
         f"- 형식: `{fmt}`" + ("" if has_clock else " (MCU 시각 없음 → 누락·시각·재시작 지표는 해당 없음)"),
+        f"- 값 검사 기준: `{db.value_check_files()[db.value_check_format(fmt)].name}`"
+        + ("" if db.value_check_format(fmt) == fmt else " (이 형식 전용 기준이 없어 8월 로그 기준을 씀 → 크기가 다른 신호는 덜 잡힐 수 있음)"),
         f"- 행 수: {rows:,}",
         f"- 기록 시각: {first_ts} ~ {last_ts}",
         f"- 기록 안 된 신호 (세션 내내 비었거나 0): {', '.join(silent) if silent else '없음'}\n",

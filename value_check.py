@@ -2,6 +2,9 @@
 
 사용: python value_check.py --make     rules/value_check.csv 를 (다시) 만든다. 보통은 한 번만.
       python value_check.py            평가 -> eval/value_check_report.md
+      python value_check.py --make --format v0_udp --src 폴더/
+                                       다른 형식 전용 기준 rules/value_check_<형식>.csv (2026-11-21).
+                                       그 형식 로그 몇 개로 열 범위를 다시 잼. 판정 방법(5%·1배·2배, 50 ms)은 같음.
 
 판정 (열마다, 같은 세션 안에서 row_no 순서로):
     |값 - 앞뒤 2행씩 5행의 중앙값| > min_dev  이고  그 값이 50 ms 이하로만 나타났으면 튄 값.
@@ -21,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import csv
 import math
 import random
@@ -67,6 +71,51 @@ def make() -> None:
             wr.writerow([c.lower(), k, f"{r:.4g}", m, f"{r * m:.4g}",
                          f"{r * DIGIT_FRACTION:.4g}" if c.lower() in DIGIT_COLS else ""])
     print(RULES)
+
+
+MIN_DRIVE_ROWS = 10_000   # 주행 세션으로 칠 주행 행(속도 > 5 km/h) 수. 아래 make_for_format 설명 참고
+MIN_DRIVE_SESSIONS = 2    # 기준을 만드는 데 필요한 주행 세션 수 (8월 기본 기준은 분석용 3세션)
+
+
+def make_for_format(fmt: str, src: Path, force: bool = False) -> Path:
+    """다른 형식의 로그로 열 범위를 재서 그 형식 전용 기준을 만든다. 로그는 실제 적재 경로(형식 판별·열 대응)로 읽는다.
+    범위 = 세션마다 잰 1%~99% 분위 폭의 중앙값. 처음엔 모든 행을 합쳐 쟀는데, 7월 로그 두 개의 서스펜션 영점이 달라(약 0 과 약 40)
+    범위가 약 43으로 부풀었다 (세션 안에서는 3~5). 세션 내내 0인 신호는 범위가 0 -> 1 로 둔다 (판정 의미 없음).
+    주행 세션(주행 행 MIN_DRIVE_ROWS 이상)만 쓰고, 그런 세션이 MIN_DRIVE_SESSIONS 개 미만이면 만들지 않는다 (--force 로 무시).
+    7월 로그 2개(정지 시험 1, 시험용 의심 1)로 만들었더니 서스펜션 범위가 3~5 라, 정지 시험에서 손으로 누른 듯한
+    큰 움직임(rr 5 -> 62)까지 튄 값으로 잡았다. 그 형식의 실제 주행 로그가 2개 이상 있을 때 만드는 것이 맞다."""
+    import tempfile
+    files = sorted([*src.glob("*.csv.gz"), *src.glob("*.csv")])
+    with tempfile.TemporaryDirectory() as td:
+        con = db.create(Path(td) / "t.db")
+        for f in files:
+            db.load_file(con, f)
+        got = {r[0] for r in con.execute("SELECT DISTINCT format FROM session")}
+        if got != {fmt}:
+            raise SystemExit(f"{src} 의 로그 형식이 {got} 이라 --format {fmt} 와 다름")
+        base = pd.read_sql_query("SELECT * FROM sample", con)
+        con.close()
+    drive_rows = (base.vehicle_speed_kmh.fillna(0) > 5).groupby(base.session_id).sum()
+    drive_ids = list(drive_rows[drive_rows >= MIN_DRIVE_ROWS].index)
+    if len(drive_ids) < MIN_DRIVE_SESSIONS and not force:
+        raise SystemExit(f"주행 세션이 {len(drive_ids)}개뿐이라 기준을 만들지 않음 (필요 {MIN_DRIVE_SESSIONS}개, "
+                         f"세션마다 주행 행 {MIN_DRIVE_ROWS:,}개 이상). 세션별 주행 행: {drive_rows.to_dict()}. "
+                         "정지·시험 로그로 만들면 범위가 너무 작아 정상 움직임까지 잡힘. 그래도 만들려면 --force")
+    if drive_ids:
+        base = base[base.session_id.isin(drive_ids)]
+    out = db.ROOT / "rules" / f"value_check_{fmt}.csv"
+    with open(out, "w", encoding="utf-8", newline="") as fh:
+        wr = csv.writer(fh)
+        wr.writerow(["column_name", "kind", "range_p1_p99", "multiple", "min_dev", "digit_min_dev"])
+        for c in CHECK:
+            per = [float(g.quantile(0.99) - g.quantile(0.01)) for _, g in base.groupby("session_id")[c.lower()] if g.notna().any()]
+            r = float(np.median(per)) if per else 0.0
+            r = r or 1.0
+            k, m = kind_of(c)
+            wr.writerow([c.lower(), k, f"{r:.4g}", m, f"{r * m:.4g}",
+                         f"{r * DIGIT_FRACTION:.4g}" if c.lower() in DIGIT_COLS else ""])
+    print(f"{out} ({len(files)}개 파일, {len(base):,}행)")
+    return out
 
 
 def load_rules() -> dict[str, float]:
@@ -186,7 +235,13 @@ def evaluate() -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--make", action="store_true")
+    ap.add_argument("--format", default=None, help="다른 형식 전용 기준을 만들 때 (예: v0_udp)")
+    ap.add_argument("--src", type=Path, default=None, help="--format 과 같이: 그 형식 로그가 든 폴더")
+    ap.add_argument("--force", action="store_true", help="주행 행이 적어도 기준을 만듦")
     a = ap.parse_args()
+    if a.make and a.format and a.format != db.DEFAULT_VC_FORMAT:
+        make_for_format(a.format, a.src, a.force)
+        raise SystemExit(0)
     if a.make:
         make()
     evaluate()

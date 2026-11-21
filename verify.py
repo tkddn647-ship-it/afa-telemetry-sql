@@ -34,12 +34,14 @@ def digit_step(diff) -> np.ndarray:
     return out
 
 
-def value_flags(df: pd.DataFrame) -> pd.DataFrame:
-    """sql/01a 와 같은 판정을 pandas로: |값 - 앞뒤 2행씩 5행 중앙값| > min_dev. 열 이름은 소문자."""
+def value_flags(df: pd.DataFrame, fmt: str | None = None) -> pd.DataFrame:
+    """sql/01a 와 같은 판정을 pandas로: |값 - 앞뒤 2행씩 5행 중앙값| > min_dev. 열 이름은 소문자.
+    fmt 를 주면 그 형식의 기준(rules/value_check_<형식>.csv, 없으면 기본)을 쓴다. 안 주면 기본(VALUE_CHECK)."""
     low = {c.lower(): c for c in df.columns}
     t = df[low["stm_ms"]].astype(float)
     out = pd.DataFrame(index=df.index)
-    for col, md in VALUE_CHECK.items():
+    vc, dc = (VALUE_CHECK, DIGIT_CHECK) if fmt is None else db.thresholds(fmt)
+    for col, md in vc.items():
         x = df[low[col]].astype(float)
         med = x.rolling(5, center=True, min_periods=5).median()
         # 그 값이 실제로 나타난 시간 (sql/01a 와 같은 정의)
@@ -47,8 +49,8 @@ def value_flags(df: pd.DataFrame) -> pd.DataFrame:
         dur = pd.Series(dur, index=df.index)
         short = dur.isna() | (dur <= 50) | (dur < 0) | (dur > 1000)
         big = ((x - med).abs() > md).fillna(False)
-        if col in DIGIT_CHECK:
-            dig = ((x - med).abs() > DIGIT_CHECK[col]).fillna(False) & \
+        if col in dc:
+            dig = ((x - med).abs() > dc[col]).fillna(False) & \
                 (digit_step((x - x.shift(1)).to_numpy()) | digit_step((x - x.shift(-1)).to_numpy()))
             big = big | dig
         out[col] = big & short

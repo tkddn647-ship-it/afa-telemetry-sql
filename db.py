@@ -74,29 +74,58 @@ def create(path: Path = DB) -> sqlite3.Connection:
 VALUE_CHECK_CSV = ROOT / "rules" / "value_check.csv"
 SCHEMA_V2 = """
 DROP TABLE IF EXISTS value_check;   -- 매번 CSV에서 다시 채우므로 열이 바뀌어도 안전하게 새로 만든다
-CREATE TABLE value_check (column_name TEXT PRIMARY KEY, kind TEXT NOT NULL, range_p1_p99 REAL NOT NULL,
-                          multiple REAL NOT NULL, min_dev REAL NOT NULL, digit_min_dev REAL);
+CREATE TABLE value_check (format TEXT NOT NULL, column_name TEXT NOT NULL, kind TEXT NOT NULL, range_p1_p99 REAL NOT NULL,
+                          multiple REAL NOT NULL, min_dev REAL NOT NULL, digit_min_dev REAL,
+                          PRIMARY KEY (format, column_name));
 CREATE TABLE IF NOT EXISTS value_flag (session_id INTEGER NOT NULL, row_no INTEGER NOT NULL, column_name TEXT NOT NULL,
                                        value REAL NOT NULL, median5 REAL NOT NULL, PRIMARY KEY (session_id, row_no, column_name));
 """
 
 
+DEFAULT_VC_FORMAT = "v1_mcu"
+
+
+def value_check_files() -> dict[str, Path]:
+    """형식 -> 값 검사 기준 파일. rules/value_check.csv 는 8월 로그(v1_mcu)로 만든 기본, rules/value_check_<형식>.csv 는 그 형식 전용."""
+    out = {DEFAULT_VC_FORMAT: VALUE_CHECK_CSV}
+    for p in sorted((ROOT / "rules").glob("value_check_*.csv")):
+        out[p.stem[len("value_check_"):]] = p
+    return out
+
+
+def value_check_format(fmt: str | None) -> str:
+    """세션 형식에 쓸 기준. 그 형식 전용 파일이 없으면 기본(v1_mcu)."""
+    return fmt if fmt in value_check_files() else DEFAULT_VC_FORMAT
+
+
+def thresholds(fmt: str | None = None) -> tuple[dict[str, float], dict[str, float]]:
+    """(min_dev, digit_min_dev) — pandas 구현(verify.value_flags)이 SQL 과 같은 기준을 쓰게."""
+    with open(value_check_files()[value_check_format(fmt)], encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    return ({r["column_name"]: float(r["min_dev"]) for r in rows},
+            {r["column_name"]: float(r["digit_min_dev"]) for r in rows if r.get("digit_min_dev")})
+
+
 def refresh_flags(con: sqlite3.Connection, session_ids: list[int] | None = None) -> None:
     """깨진 값 표시를 최신으로: value_check 표를 CSV에서 다시 읽고, value_flag 를 다시 계산하고, 01_flags 뷰를 다시 만든다.
     session_ids 를 주면 그 세션만 다시 계산 (pipeline.py 가 새 로그만 처리할 때). 예전 DB에 표가 없으면 만든다."""
+    migrate(con)
     con.executescript(SCHEMA_V2)
-    with open(VALUE_CHECK_CSV, encoding="utf-8") as fh:
-        rows = [(r["column_name"], r["kind"], float(r["range_p1_p99"]), float(r["multiple"]), float(r["min_dev"]),
-                 float(r["digit_min_dev"]) if r.get("digit_min_dev") else None)
-                for r in csv.DictReader(fh)]
-    con.executemany("INSERT INTO value_check VALUES (?,?,?,?,?,?)", rows)
+    rows = []
+    for fmt, path in value_check_files().items():
+        with open(path, encoding="utf-8") as fh:
+            rows += [(fmt, r["column_name"], r["kind"], float(r["range_p1_p99"]), float(r["multiple"]), float(r["min_dev"]),
+                      float(r["digit_min_dev"]) if r.get("digit_min_dev") else None)
+                     for r in csv.DictReader(fh)]
+    con.executemany("INSERT INTO value_check VALUES (?,?,?,?,?,?,?)", rows)
     ids = session_ids if session_ids is not None else [r[0] for r in con.execute("SELECT session_id FROM session")]
-    con.execute("CREATE TEMP TABLE IF NOT EXISTS refresh_session (session_id INTEGER PRIMARY KEY)")
-    con.execute("DELETE FROM temp.refresh_session")
-    con.executemany("INSERT INTO temp.refresh_session VALUES (?)", [(i,) for i in ids])
+    con.execute("DROP TABLE IF EXISTS temp.refresh_session")
+    con.execute("CREATE TEMP TABLE refresh_session (session_id INTEGER PRIMARY KEY, vc_format TEXT NOT NULL)")
+    fmt_of = dict(con.execute("SELECT session_id, format FROM session").fetchall())
+    con.executemany("INSERT INTO temp.refresh_session VALUES (?,?)", [(i, value_check_format(fmt_of.get(i))) for i in ids])
     con.execute("DELETE FROM value_flag WHERE session_id IN (SELECT session_id FROM temp.refresh_session)")
     template = (ROOT / "sql" / "01a_value_flags.sql").read_text(encoding="utf-8")
-    for (col,) in con.execute("SELECT column_name FROM value_check ORDER BY column_name").fetchall():
+    for (col,) in con.execute("SELECT DISTINCT column_name FROM value_check ORDER BY column_name").fetchall():
         con.execute(template.replace("{col}", col))
     con.commit()
     con.executescript((ROOT / "sql" / "01_flags.sql").read_text(encoding="utf-8"))

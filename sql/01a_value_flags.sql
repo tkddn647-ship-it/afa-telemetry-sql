@@ -10,6 +10,8 @@
 --   기준(min_dev = 열 범위의 1배)보다 작아도, 중앙값에서 digit_min_dev(범위의 20%) 넘게 벗어났고
 --   앞 행이나 뒷 행과의 차이가 정확히 (1~9) x 10, 100, 1000 이면 숫자 글자가 끼어들거나 빠지거나 바뀐 것으로 본다.
 --   예: 7.34 -> 27.34 -> 7.34,  -60.3 -> -0.3 -> -60.3. 분석 에이전트(v2)가 찾은 빈틈.
+-- 기준은 세션의 형식에 맞는 value_check 행 (temp.refresh_session.vc_format, 2026-11-21).
+--   rules/value_check_<형식>.csv 가 있으면 그 형식 기준, 없으면 8월 로그로 만든 v1_mcu 기준.
 INSERT INTO value_flag (session_id, row_no, column_name, value, median5)
 WITH w AS (
     SELECT session_id, row_no, {col} AS v,
@@ -29,10 +31,11 @@ WITH w AS (
     FROM w
     WHERE a IS NOT NULL AND b IS NOT NULL AND v IS NOT NULL AND d IS NOT NULL AND e IS NOT NULL
 )
-SELECT session_id, row_no, '{col}', v, med
-FROM m
-WHERE (ABS(v - med) > (SELECT min_dev FROM value_check WHERE column_name = '{col}')
-       OR (ABS(v - med) > (SELECT digit_min_dev FROM value_check WHERE column_name = '{col}')     -- NULL 이면 거짓
+SELECT m.session_id, m.row_no, '{col}', v, med
+FROM m JOIN temp.refresh_session r ON r.session_id = m.session_id
+       JOIN value_check vc ON vc.column_name = '{col}' AND vc.format = r.vc_format
+WHERE (ABS(v - med) > vc.min_dev
+       OR (ABS(v - med) > vc.digit_min_dev     -- NULL 이면 거짓
            AND (   (ABS(db_ - 10 * ROUND(db_ / 10)) < 0.005 AND ROUND(db_ / 10) BETWEEN 1 AND 9)
                 OR (ABS(db_ - 100 * ROUND(db_ / 100)) < 0.005 AND ROUND(db_ / 100) BETWEEN 1 AND 9)
                 OR (ABS(db_ - 1000 * ROUND(db_ / 1000)) < 0.005 AND ROUND(db_ / 1000) BETWEEN 1 AND 9)

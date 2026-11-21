@@ -7,11 +7,14 @@
   2. 대응한 신호는 행마다 값이 같고, 그 형식에 없는 신호는 NULL (0 이 아님)
   3. MCU 시각이 없는 형식은 누락·시각·재시작 지표가 None (해당 없음), v1 은 숫자
   4. 기록 안 된 신호가 필요한 지표는 None (예: 인버터 전류가 전부 0 이면 전류 불일치는 해당 없음)
-  5. 값 검사: v0 세션의 SQL 표시 = pandas 구현(시각 없이 행 수로 판단)
+  5. 값 검사: v0 세션의 SQL 표시 = pandas 구현(시각 없이 행 수로 판단, 같은 형식 기준)
+  7. 형식 전용 기준: rules/value_check_<형식>.csv 가 있으면 그 형식 세션만 그 기준으로 판정 (없으면 기본).
+     시험에선 v0 의 fl 기준을 1000 으로 바꾼 임시 기준을 끼워, 심은 튐이 v0 에서만 안 잡히는지 본다
   6. 모르는 형식은 머리줄을 알려 주며 멈춤
 """
 from __future__ import annotations
 
+import csv
 import gzip
 import random
 import sys
@@ -98,10 +101,34 @@ def main() -> None:
         sql = {(r[0], r[1]) for r in con.execute(f"SELECT row_no, column_name FROM value_flag WHERE session_id = {sid0}")}
         df0 = pd.read_sql_query(f"SELECT * FROM sample WHERE session_id = {sid0} ORDER BY row_no", con)
         df0 = df0.rename(columns={c.lower(): c for c in db.COLUMNS})
-        pf = verify.value_flags(df0)
+        pf = verify.value_flags(df0, "v0_udp")             # SQL 과 같은 기준 (형식 전용 파일이 있으면 그것)
         pan = {(int(i) + 1, c.lower()) for c in pf.columns for i in np.flatnonzero(pf[c].to_numpy())}
         check("5. 시각 없는 형식에서도 값 검사 SQL = pandas", sql == pan and (2001, "fl") in sql,
               f"SQL {len(sql)}칸, pandas {len(pan)}칸, 심은 튐(2001행 fl) 잡음={(2001, 'fl') in sql}")
+
+        tmp_vc = td / "value_check_v0_udp.csv"
+        rows = list(csv.DictReader(open(db.VALUE_CHECK_CSV, encoding="utf-8")))
+        for r in rows:
+            if r["column_name"] == "fl":
+                r["min_dev"], r["digit_min_dev"] = "1000", ""
+        with open(tmp_vc, "w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=rows[0].keys())
+            w.writeheader()
+            w.writerows(rows)
+        orig = db.value_check_files
+        db.value_check_files = lambda: {**orig(), "v0_udp": tmp_vc}
+        try:
+            db.refresh_flags(con)
+            vcf = dict(con.execute("SELECT session_id, vc_format FROM temp.refresh_session").fetchall())
+            hit = {s for (s,) in con.execute("SELECT session_id FROM value_flag WHERE row_no = 2001 AND column_name = 'fl'")}
+            sql7 = {(r[0], r[1]) for r in con.execute(f"SELECT row_no, column_name FROM value_flag WHERE session_id = {sid0}")}
+            pf7 = verify.value_flags(df0, "v0_udp")
+            pan7 = {(int(i) + 1, c.lower()) for c in pf7.columns for i in np.flatnonzero(pf7[c].to_numpy())}
+            check("7. 형식마다 값 검사 기준", vcf == {sid1: "v1_mcu", sid0: "v0_udp"} and hit == {sid1} and sql7 == pan7,
+                  f"기준 {vcf}, 심은 튐을 잡은 세션 {hit} (v1 만이어야 함), v0 SQL = pandas {sql7 == pan7}")
+        finally:
+            db.value_check_files = orig
+            db.refresh_flags(con)
 
         try:
             db.load_file(con, bad)
